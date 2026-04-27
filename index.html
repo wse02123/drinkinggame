@@ -823,7 +823,7 @@
     function copyInviteBoard() {
         const roomName = document.getElementById('headerRoomTitle').innerText;
         // Gate 4: 서버에서 받은 실제 초대코드 & 비밀번호 사용
-        const link = currentInviteCode || `http://localhost:3000/join/${currentRoomId || 'XXXXXXXX'}`;
+        const link = currentInviteCode || `${window.location.origin}/join/${currentRoomId || 'XXXXXXXX'}`;
         const pwLine = currentInvitePw ? `비밀번호: ${currentInvitePw}` : '비밀번호: 없음 (공개방)';
         const txt = `[짠! 다같이 술게임]\n방 이름: ${roomName}\n${pwLine}\n초대 링크: ${link}`;
         if(navigator.clipboard && navigator.clipboard.writeText) {
