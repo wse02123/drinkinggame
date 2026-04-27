@@ -1,0 +1,1565 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>짠! 다같이 술게임</title>
+    <link href="https://fonts.googleapis.com/css2?family=Jua&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <!-- Gate 5: Supabase Realtime Integration -->
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+    <script>
+        // Supabase Initialization
+        const SUPABASE_URL = 'https://xlhmwnpmydpixvpngkvd.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_TU9u0_512rP94JxVHh5BlQ_ZecrBY7y';
+        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    </script>
+    <script src="supabase_logic.js"></script>
+    <style>
+        :root {
+            --bg-base: #F8F6F0; 
+            --bg-surface: #FFFFFF;
+            --ink: #383332; 
+            --ink-light: #5E5857;
+            --point-beer: #FFBC0A; 
+            --point-soju: #26D779; 
+            --point-red: #FF4B4B;  
+            --point-blue: #4D96FF; 
+            --border-style: 2.5px solid var(--ink);
+            --hard-shadow: 4px 4px 0px rgba(56, 51, 50, 0.95);
+            --soft-radius: 14px; 
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { 
+            font-family: 'Pretendard', sans-serif; 
+            background-color: #EAE6DB; 
+            background-image: url("data:image/svg+xml,%3Csvg width='100' height='100' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100' height='100' filter='url(%23noise)' opacity='0.08'/%3E%3C/svg%3E");
+            color: var(--ink); width: 100vw; height: 100vh; overflow: hidden; display: flex; justify-content: center; 
+        }
+
+        .app-container { 
+            width: 100%; max-width: 480px; height: 100%; 
+            background-color: var(--bg-base); position: relative; overflow: hidden; display: flex; flex-direction: column; 
+            border-left: 1px solid var(--ink); border-right: 1px solid var(--ink);
+        }
+
+        /* 뷰 padding 설정 */
+        .view { display: none; flex-direction: column; height: 100%; padding: 20px 20px 30px 20px; animation: fadeIn 0.3s ease; overflow-y: auto; overflow-x: hidden; position: relative; z-index:10; padding-bottom: 240px; }
+        .view.active { display: flex; }
+        #view-signup.active { padding-bottom: 40px; } /* 회원가입의 경우 플로팅 없음 */
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        .deco-icon { position: absolute; color: var(--ink); opacity: 0.05; z-index: 0; pointer-events: none; }
+        .beer-foam { position:absolute; top:0; left:0; width:100%; height:20px; z-index:5; fill:#fff; }
+
+        .wf-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; min-height: 40px; position:relative; z-index: 10; gap:8px;}
+        .wf-title { font-size: 1.7em; font-family: 'Jua', sans-serif; letter-spacing: 0.5px; flex:1; text-align:center; padding: 0 5px; line-height:1; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+        .back-btn { width:38px; height:38px; background:var(--bg-surface); border:var(--border-style); box-shadow: 2px 2px 0 var(--ink); border-radius: 12px; display:flex; align-items:center; justify-content:center; cursor:pointer; flex-shrink:0;}
+        .top-badge { background: var(--bg-surface); color: var(--ink); font-family: 'Jua', sans-serif; font-size: 1.1em; border: var(--border-style); padding: 0 10px; height: 38px; box-shadow: 2px 2px 0 var(--ink); border-radius: 12px; cursor:pointer; display:flex; justify-content:center; align-items:center; flex-shrink:0; position:relative; z-index:20;}
+        .sticker-rotate { position: absolute; transform: rotate(-8deg); z-index: 20; font-family: 'Jua', sans-serif; padding: 4px 12px; border: var(--border-style); border-radius: 10px; box-shadow: 2px 2px 0 var(--ink); font-size: 1.2em; letter-spacing:0.5px;}
+
+        /* 플로팅 컨트롤 영역 */
+        .bottom-floating-control { position: absolute; bottom:0; left:0; width:100%; padding: 30px 20px 25px 20px; background: linear-gradient(to top, var(--bg-base) 85%, transparent); z-index: 50; display:flex; flex-direction:column; }
+
+        .btn-callbell { 
+            background: radial-gradient(circle at 50% 10%, #ff8a8a 0%, var(--point-red) 40%, #c42323 100%);
+            color: #fff; width: 100%; height: 60px; padding: 0 16px; border: var(--border-style); border-radius: 999px; 
+            font-size: 1.5em; font-family: 'Jua', sans-serif; cursor: pointer; 
+            box-shadow: inset 0 -4px 0px rgba(0,0,0,0.2), 0px 6px 0px var(--ink), 0px 8px 10px rgba(0,0,0,0.3); transition: all 0.1s ease; outline:none; text-shadow: 1px 1px 0px rgba(0,0,0,0.5);
+            display: flex; justify-content:center; align-items:center; gap:8px; flex-shrink: 0; position: relative; z-index: 10; margin-top: auto;
+        }
+        .btn-callbell.soju { background: radial-gradient(circle at 50% 10%, #76f0ab 0%, var(--point-soju) 40%, #15944d 100%); }
+        .btn-callbell:active { transform: translateY(6px); box-shadow: inset 0 -2px 0px rgba(0,0,0,0.2), 0px 0px 0px var(--ink), 0px 2px 5px rgba(0,0,0,0.2); }
+        .btn-callbell::before { content: ''; position:absolute; top: 6px; left: 20px; right: 20px; height: 10px; background: linear-gradient(180deg, rgba(255,255,255,0.4) 0%, rgba(255,255,255,0) 100%); border-radius: 20px; pointer-events:none; }
+        .btn-callbell:disabled { filter: grayscale(1); opacity: 0.7; pointer-events:none; }
+
+        .btn-secondary { background: #fff; color: var(--ink); border: var(--border-style); border-radius: var(--soft-radius); padding: 14px; font-size: 1.25em; font-family:'Jua'; width: 100%; box-shadow: var(--hard-shadow); cursor: pointer; }
+        .btn-outline { background: #fff; border: var(--border-style); color: var(--ink); border-radius: var(--soft-radius); padding: 10px 14px; font-weight: bold; cursor: pointer; display:flex; align-items:center; justify-content:center; gap:8px; box-shadow: 2px 2px 0 var(--ink);}
+        
+        .input-group { background: #fff; border: var(--border-style); border-radius: var(--soft-radius); padding: 15px; display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px; box-shadow: 2px 2px 0 var(--ink);}
+        .input-group input { background: transparent; border: none; color: var(--ink); font-size: 1.2em; font-weight:bold; outline: none; width: 100%; min-width: 0; }
+        .input-group input::placeholder { color: #aaa; }
+        
+        /* Avatar Coaster */
+        .wf-avatar-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 25px; position:relative; z-index: 10; }
+        .wf-avatar-card { 
+            background: #fff; padding: 15px 10px; 
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            border: var(--border-style); box-shadow: 4px 4px 0 rgba(56,51,50,0.9); 
+            border-radius: 50%; aspect-ratio: 1/1; position: relative; 
+            background-image: radial-gradient(rgba(0,0,0,0.03) 10%, transparent 11%), radial-gradient(rgba(0,0,0,0.03) 10%, transparent 11%);
+            background-size: 10px 10px; background-position: 0 0, 5px 5px;
+        }
+        .wf-avatar-card::after { content: ''; position:absolute; top:4px; left:4px; right:4px; bottom:4px; border: 2px dashed rgba(56,51,50,0.15); border-radius: 50%; pointer-events:none; }
+        .wf-avatar-card.is-me { border-color: var(--point-blue); border-width: 3px; }
+        .wf-emoji { width:48px; height:48px; border:var(--border-style); border-radius:50%; margin: 0 0 6px 0; display:flex; justify-content:center; align-items:center; font-size:1.8em; box-shadow: 2px 2px 0 var(--ink); position:relative; z-index:5; overflow:hidden; transition: background-color 0.5s ease;}
+        
+        .host-crown { position: absolute; top: -5px; left: -5px; background: #fff; border: var(--border-style); border-radius: 50%; width: 32px; height: 32px; display: flex; justify-content: center; align-items: center; box-shadow: 2px 2px 0 var(--ink); z-index: 10; transform: rotate(-25deg); }
+        .avatar-name { font-weight:900; font-size:1.3em; color:var(--ink); margin-bottom: 2px; text-align: center; position:relative; z-index:5;}
+        .avatar-score { font-size:1.1em; font-weight:bold; color:var(--ink-light); text-align: center; position:relative; z-index:5;}
+
+        /* speech bubble for game request */
+        .speech-bubble { position: absolute; top: -20px; right: -30px; background: #fff; border: var(--border-style); padding: 6px 10px; border-radius: 12px; font-family:'Jua'; font-size:1.2.em; color:var(--point-red); z-index: 30; animation: popSpeech 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); box-shadow: 2px 2px 0 var(--ink); white-space:nowrap;}
+        .speech-bubble::after { content:''; position:absolute; bottom:-6px; left:20px; width:0; height:0; border-left:6px solid transparent; border-right:6px solid transparent; border-top:6px solid var(--ink); }
+        @keyframes popSpeech { 0% {transform:scale(0); opacity:0;} 100% {transform:scale(1); opacity:1;} }
+
+        /* PRD 2.3 화력지원 플래시 효과 */
+        @keyframes flashEffect {
+            0% { background-color: rgba(255, 255, 255, 0.9); }
+            100% { background-color: transparent; }
+        }
+        .flash-screen { position: fixed; top:0; left:0; width:100%; height:100%; background:transparent; z-index:9999; pointer-events:none; }
+        .flash-active { animation: flashEffect 0.3s ease-out; }
+
+        /* Game Selector */
+        .game-selector { 
+            background: #fff; border: var(--border-style); box-shadow: var(--hard-shadow); 
+            padding: 12px 18px; border-radius: var(--soft-radius); display: flex; align-items: center; gap: 15px; margin-bottom: 5px; 
+            position: relative; z-index: 10; width:100%; cursor:pointer; min-width: 240px; transition:0.2s;
+        }
+        .game-selector.unselected { opacity:0.6; box-shadow: 2px 2px 0 rgba(56, 51, 50, 0.5); transform: translateY(2px); }
+        .game-selector.selected { border-color: var(--point-blue); background-image: linear-gradient(180deg, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0) 20%); }
+        .game-icon { width: 48px; height: 48px; background: var(--point-soju); border: var(--border-style); border-radius: 50%; display: flex; align-items: center; justify-content: center; transform: rotate(-15deg); box-shadow: 2px 2px 0 var(--ink); flex-shrink: 0; outline: 2.5px dashed var(--point-soju); outline-offset:-3px;}
+        .game-text { display: flex; flex-direction: column; justify-content: center; }
+
+        /* Vote Row */
+        .vote-row { 
+            background: #fff; border: var(--border-style); box-shadow: var(--hard-shadow); 
+            padding: 12px 20px; margin-bottom: 16px; border-radius: var(--soft-radius); 
+            display: flex; justify-content: space-between; align-items: center; cursor:pointer;
+            font-size: 1.35em; font-weight: 800; transition: 0.2s; min-height: 56px; position: relative; z-index: 10;
+        }
+        .vote-row.selected { background: var(--bg-base); border-color: var(--point-blue); transform: translate(3px,3px); box-shadow: 2px 2px 0 var(--point-blue); }
+        .custom-check { width: 30px; height: 30px; border: var(--border-style); border-radius: 50%; background: #fff; display: flex; align-items: center; justify-content: center; transition:0.2s; flex-shrink: 0;}
+        .vote-row.selected .custom-check { background: var(--point-blue); box-shadow: inset 0px 3px 0px rgba(0,0,0,0.2); border-color: var(--ink); }
+
+        /* Modal Sheets */
+        .modal-overlay { position: absolute; top:0; left:0; width:100%; height:100%; background: rgba(56,51,50,0.8); z-index: 100; display: none; flex-direction: column; justify-content: flex-end; backdrop-filter: blur(5px); }
+        .modal-overlay.active { display: flex; }
+        .bottom-sheet { background: var(--bg-base); border-top: var(--border-style); border-radius: 32px 32px 0 0; padding: 30px 20px; animation: slideUp 0.3s ease-out; box-shadow: 0 -10px 30px rgba(0,0,0,0.2); overflow-y:auto; max-height:90vh;}
+        .center-sheet { background: var(--bg-base); border: var(--border-style); border-radius: 24px; padding: 30px 20px; box-shadow: var(--hard-shadow); margin: auto 20px; animation: popIn 0.3s ease-out; text-align:center; position:relative; }
+        @keyframes slideUp { from{ transform: translateY(100%); } to{ transform: translateY(0); } }
+        @keyframes popIn { from{ transform: scale(0.8); opacity:0;} to{ transform: scale(1); opacity:1;} }
+        
+        /* Toast */
+        #toast {
+            visibility: hidden; min-width: 200px; background-color: var(--point-red); color: #fff;
+            text-align: center; border-radius: 24px; padding: 12px 20px; position: fixed;
+            z-index: 1000; left: 50%; bottom: 40px; transform: translateX(-50%); font-family:'Jua'; font-size:1.2em;
+            box-shadow: var(--hard-shadow); border:var(--border-style);
+        }
+        #toast.show { visibility: visible; animation: fadein 0.3s, fadeout 0.3s 2.7s; }
+        @keyframes fadein { from {bottom: 0; opacity: 0;} to {bottom: 40px; opacity: 1;} }
+        @keyframes fadeout { from {bottom: 40px; opacity: 1;} to {bottom: 0; opacity: 0;} }
+
+        .room-card-item { background: #fff; border: var(--border-style); border-radius: var(--soft-radius); padding: 16px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; box-shadow: var(--hard-shadow); }
+        .host-only { display: none; }
+    </style>
+</head>
+<body>
+
+<div class="app-container" id="capture-area">
+    
+    <!-- PRD 화력지원 이펙트 캔버스 -->
+    <div id="flashScreen" class="flash-screen"></div>
+
+    <div class="deco-icon" style="top: 220px; left: -15px; transform: rotate(-12deg);">
+        <svg width="100" height="100" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M9 8h6v14H9z"/><path d="M11 2h2v6h-2z"/></svg>
+    </div>
+    <div class="deco-icon" style="top: 400px; right: -20px; transform: rotate(15deg);">
+        <svg width="110" height="110" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8h10v12a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V8z"/><path d="M17 11h2a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2h-2"/><path d="M7 8S8 4 12 4s5 4 5 4"/></svg>
+    </div>
+
+    <!-- STEP 1: SIGNUP -->
+    <form id="view-signup" class="view active" onsubmit="event.preventDefault(); handleSignup();">
+        <div style="font-family:'Jua'; font-size:2em; font-weight:800; color:var(--ink); margin-bottom:10px; border-bottom:4px solid var(--point-beer); display:inline-block; padding-bottom:5px; align-self:flex-start;">🍻 짠! 다같이 술게임</div>
+        
+        <div style="text-align: center; margin: 40px 0;">
+            <div id="signupEmoji" style="width: 120px; height: 120px; background: #fff; border: var(--border-style); box-shadow: var(--hard-shadow); border-radius: 50%; font-size: 4em; display: inline-flex; justify-content: center; align-items: center; user-select: none; margin:0 auto; overflow: hidden; font-family:'Jua';">😎</div>
+            <div style="display:flex; justify-content:center; gap:10px; margin-top: 30px;">
+                <!-- 1-2: 실제 파일 첨부 (모바일 갤러리 연동) -->
+                <input type="file" id="photoFileInput" accept="image/*" style="display:none" onchange="handlePhotoUpload(event, 'signupEmoji')">
+                <button type="button" class="btn-outline" style="flex:1;" onclick="document.getElementById('photoFileInput').click()">📷 사진 등록</button>
+                <button type="button" class="btn-outline" style="flex:1;" onclick="changeEmoji('signupEmoji')">💫 이모지 변경</button>
+            </div>
+        </div>
+        
+        <div style="margin-bottom:20px;">
+            <p style="font-size: 1.1em; font-weight:bold; color: var(--ink-light); margin-bottom: 8px; margin-left: 5px;">닉네임 (최대 8자)</p>
+            <div class="input-group" style="margin-bottom:10px;">
+                <input type="text" id="signupNickname" placeholder="닉네임을 입력하세요" maxlength="8">
+                <div style="color: var(--point-red); font-family:'Jua'; cursor: pointer; white-space: nowrap; flex-shrink: 0; font-size:1.1em; margin-left:10px;" onclick="generateRandomPName('signupNickname')">🎲 자동 생성</div>
+            </div>
+        </div>
+        
+        <div style="flex:1;"></div>
+        <button type="submit" class="btn-callbell" style="margin-top:0;">시작하기</button>
+    </form>
+
+
+    <!-- STEP 2: LOBBY -->
+    <div id="view-lobby" class="view">
+        <div class="wf-header" style="justify-content: flex-start; gap:10px;">
+            <div id="lobbyUserEmoji" style="width:40px; height:40px; border-radius:50%; background:#fff; border:var(--border-style); display:flex; justify-content:center; align-items:center; font-size: 1.5em; overflow:hidden;">😎</div>
+            <span id="lobbyUserName" style="font-family:'Jua'; font-size:1.7em;">유저</span>
+            <button class="btn-outline" style="height:32px; font-size:0.9em; padding:0 10px; border-radius:8px; box-shadow:1px 1px 0 var(--ink);" onclick="openProfileModal()">변경</button>
+        </div>
+        
+        <button class="btn-secondary" style="margin-bottom: 30px; display:flex; justify-content:center; align-items:center; gap:10px;" onclick="document.getElementById('modal-create-room').classList.add('active');"><svg width="24" height="24" viewBox="0 0 24 24" fill="var(--point-beer)" stroke="var(--ink)" stroke-width="2.5" stroke-linejoin="round"><path d="M2 22h20M2 20l4-12 4 6 2-10 2 10 4-6 4 12"/></svg> 새 테이블 깔기 (방장)</button>
+        
+        <div style="font-size: 1.25em; font-family:'Jua'; color: var(--ink); border-bottom: 3px solid var(--point-soju); padding-bottom: 8px; margin-bottom: 15px; display:inline-block;">술자리 합석하기 <span style="color:var(--point-blue);" id="roomCountBadge">0</span></div>
+        
+        <div class="input-group" style="padding: 10px 15px; margin-bottom: 20px;">
+            <input type="text" id="roomSearchInput" onkeypress="if(event.key==='Enter') filterRooms()" placeholder="술자리 이름 검색..." style="font-size:1.1em;">
+            <span style="font-size:1.5em; cursor:pointer;" onclick="filterRooms()">🔍</span>
+            <span style="font-size:1.5em; cursor:pointer; margin-left:8px;" onclick="refreshRoomList()" title="새로고침">🔄</span>
+        </div>
+
+        <!-- 2-1: 로비 방 목록 영역 scroll 확보 -->
+        <div style="flex: 1; overflow-y: auto; min-height: 0;" id="roomListContainer">
+            <div class="room-card-item" data-name="불타는 찐친모임" style="opacity:0.5; cursor:not-allowed;">
+                <div><h4 style="color:var(--ink); font-family:'Jua'; font-size:1.3em;">🔥 불타는 찐친모임</h4><p style="font-size:0.9em; font-weight:bold; color:var(--point-red); margin-top:5px;">입장불가 (만석)</p></div>
+                <div style="font-size:1em; font-weight:900;">8 / 8명</div>
+            </div>
+            <div class="room-card-item" data-name="은비 생일파티" style="cursor:pointer;" onclick="tryJoinLockRoom('은비 생일파티')">
+                <div><h4 style="color:var(--point-blue); font-family:'Jua'; font-size:1.3em;">🔒 은비 생일파티</h4><p style="font-size:0.9em; font-weight:bold; color:var(--ink-light); margin-top:5px;">비밀방 (터치하여 호출)</p></div>
+                <div style="font-size:1em; font-weight:900;">3 / 8명</div>
+            </div>
+            <div class="room-card-item" data-name="열린 소주방" style="cursor:pointer;" onclick="joinRoomMock(false, '열린 소주방')">
+                <div><h4 style="color:var(--ink); font-family:'Jua'; font-size:1.3em;">🍻 열린 소주방</h4><p style="font-size:0.9em; font-weight:bold; color:var(--ink-light); margin-top:5px;">개방 (터치하여 진입)</p></div>
+                <div style="font-size:1em; font-weight:900;">5 / 8명</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Edit Profile -->
+    <div id="modal-edit-profile" class="modal-overlay" onclick="closeModalDirect('modal-edit-profile')">
+        <form class="bottom-sheet" onclick="event.stopPropagation()" onsubmit="event.preventDefault(); saveProfile();">
+            <h3 style="color:var(--ink); font-family:'Jua'; font-size:1.8em; margin-bottom: 5px;">내 프로필 관리</h3>
+            <div style="text-align: center; margin: 20px 0;">
+                <div id="currentEmoji" style="width: 100px; height: 100px; background: #fff; border: var(--border-style); box-shadow: var(--hard-shadow); border-radius: 50%; font-size: 3em; display: inline-flex; justify-content: center; align-items: center; user-select: none; margin:0 auto; overflow: hidden; font-family:'Jua';">😎</div>
+                <div style="display:flex; justify-content:center; gap:10px; margin-top: 20px;">
+                    <!-- 프로필 모달에서도 실제 파일 업로드 -->
+                    <input type="file" id="photoFileInputProfile" accept="image/*" style="display:none" onchange="handlePhotoUpload(event, 'currentEmoji')">
+                    <button type="button" class="btn-outline" style="flex:1;" onclick="document.getElementById('photoFileInputProfile').click()">📷 사진 등록</button>
+                    <button type="button" class="btn-outline" style="flex:1;" onclick="changeEmoji('currentEmoji')">💫 이모지 변경</button>
+                </div>
+            </div>
+            <p style="font-size: 1.1em; font-weight:bold; color: var(--ink-light); margin-bottom: 8px; margin-left: 5px;">닉네임 변경</p>
+            <div class="input-group" style="margin-bottom: 20px;">
+                <input type="text" id="nicknameInput" placeholder="닉네임을 입력하세요" maxlength="8">
+                <div style="color: var(--point-red); font-family:'Jua'; cursor: pointer; white-space: nowrap; flex-shrink: 0; font-size:1.1em; margin-left:10px;" onclick="generateRandomPName('nicknameInput')">🎲 자동 생성</div>
+            </div>
+            <button type="submit" class="btn-callbell">저장하기</button>
+        </form>
+    </div>
+
+    <!-- Modal: Password Entry -->
+    <div id="modal-enter-password" class="modal-overlay" onclick="closeModalDirect('modal-enter-password')">
+        <div class="bottom-sheet" onclick="event.stopPropagation()">
+            <h3 style="color:var(--ink); font-family:'Jua'; font-size:1.8em; margin-bottom: 20px;">🔒 비밀번호 입력</h3>
+            <p id="pwRoomNameLabel" style="font-size: 1.1em; font-weight:bold; color: var(--ink-light); margin-bottom: 8px; margin-left: 5px;">방 이름</p>
+            <div class="input-group" style="margin-bottom: 30px;"><input type="password" placeholder="비밀번호 4자리" maxlength="4"></div>
+            <button class="btn-callbell" onclick="joinRoomMock(false, currentClickRoomName)">문 열고 난입</button>
+        </div>
+    </div>
+
+    <!-- Modal: Create Room -->
+    <div id="modal-create-room" class="modal-overlay" onclick="closeModalDirect('modal-create-room')">
+        <div class="bottom-sheet" onclick="event.stopPropagation()">
+            <h3 style="color:var(--ink); font-family:'Jua'; font-size:1.8em; margin-bottom: 20px;">🍻 새 테이블 깔기</h3>
+            <div class="input-group"><input type="text" id="createRoomNameInput" placeholder="예: 오늘 다 죽어보자 (방 이름)" maxlength="15"></div>
+            <div class="input-group" style="margin-bottom: 30px;"><input type="password" placeholder="비밀번호(선택) 4자리" maxlength="4"></div>
+            <button class="btn-callbell" onclick="joinRoomMock(true, document.getElementById('createRoomNameInput').value || '새로운 테이블')">오픈하기</button>
+        </div>
+    </div>
+
+
+    <!-- STEP 4-7: ROOM -->
+    <div id="view-room" class="view" style="padding:0; padding-bottom: 120px;">
+        <div style="background:var(--point-beer); height: 160px; position:absolute; top:0; left:0; right:0; border-bottom:var(--border-style); z-index:0; 
+            background-image: repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(255,255,255,0.2) 10px, rgba(255,255,255,0.2) 20px);">
+            <svg class="beer-foam" viewBox="0 0 1440 320" preserveAspectRatio="none"><path fill="#ffffff" fill-opacity="1" d="M0,96L48,112C96,128,192,160,288,149.3C384,139,480,85,576,90.7C672,96,768,160,864,181.3C960,203,1056,181,1152,149.3C1248,117,1344,75,1392,53.3L1440,32L1440,0L1392,0C1344,0,1248,0,1152,0C1056,0,960,0,864,0C768,0,672,0,576,0C480,0,384,0,288,0C192,0,96,0,48,0L0,0Z"></path></svg>
+        </div>
+        
+        <div style="padding: 20px; flex:1; display:flex; flex-direction:column; position:relative; z-index:10;">
+            <div class="wf-header">
+                <div class="back-btn" onclick="exitRoom()"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></div>
+                <div class="wf-title" id="headerRoomTitle">방 이름</div>
+                <button class="top-badge" onclick="copyInviteBoard()">공유하기</button>
+            </div>
+            
+            <div class="sticker-rotate" style="background:#fff; color:var(--point-red); top: 85px; left: 20px; transform: rotate(4deg);">현재 <span id="roomCount"></span> 접속중!🍺</div>
+            
+            <div class="wf-avatar-grid" id="avatarGrid" style="margin-top: 50px;"></div>
+        </div>
+
+        <div class="bottom-floating-control host-only" id="host-controls">
+            <div style="font-family:'Jua'; color:var(--ink-light); margin-bottom:8px; font-size:1.1em; padding-left:5px;">게임종류</div>
+            <div style="display:flex; overflow-x:auto; gap:10px; margin-bottom:15px; padding-bottom:10px;" id="hostGameList">
+                <div class="game-selector selected" onclick="selectGame(this, '라이어 게임')">
+                    <div class="game-icon" style="background:var(--point-soju);"><span style="font-size:1.2em;">🤫</span></div>
+                    <div class="game-text"><span style="font-family:'Jua'; font-size:1.5em; color:var(--ink); line-height:1.1;">라이어 게임</span></div>
+                </div>
+                <div class="game-selector unselected" onclick="selectGame(this, 'BGM 퀴즈')">
+                    <div class="game-icon" style="background:#bbb;"><span style="font-size:1.2em;">🎵</span></div>
+                    <div class="game-text"><span style="font-family:'Jua'; font-size:1.5em; color:var(--ink); line-height:1.1;">BGM 퀴즈</span></div>
+                </div>
+                <div class="game-selector unselected" onclick="selectGame(this, '눈치 게임')">
+                    <div class="game-icon" style="background:#bbb;"><span style="font-size:1.2em;">👀</span></div>
+                    <div class="game-text"><span style="font-family:'Jua'; font-size:1.5em; color:var(--ink); line-height:1.1;">눈치 게임</span></div>
+                </div>
+            </div>
+            
+            <button class="btn-callbell" onclick="startGameHost()">게임 시작</button>
+            <div style="margin-top:25px;">
+                <button class="btn-outline" style="width:100%; border-color:var(--ink-light); color:var(--ink-light); padding:12px;" onclick="finishRoom()">문 닫기 (술자리 종료)</button>
+            </div>
+        </div>
+
+        <div class="bottom-floating-control" id="guest-controls" style="display:none;">
+            <div style="font-family:'Jua'; color:var(--ink-light); margin-bottom:8px; font-size:1.1em; padding-left:5px;">게임종류</div>
+            <div style="display:flex; overflow-x:auto; gap:10px; margin-bottom:15px; padding-bottom:10px;" id="guestGameList">
+                <div class="game-selector selected" onclick="selectGame(this, '라이어 게임')">
+                    <div class="game-icon" style="background:var(--point-soju);"><span style="font-size:1.2em;">🤫</span></div>
+                    <div class="game-text"><span style="font-family:'Jua'; font-size:1.5em; color:var(--ink); line-height:1.1;">라이어 게임</span></div>
+                </div>
+                <div class="game-selector unselected" onclick="selectGame(this, 'BGM 퀴즈')">
+                    <div class="game-icon" style="background:#bbb;"><span style="font-size:1.2em;">🎵</span></div>
+                    <div class="game-text"><span style="font-family:'Jua'; font-size:1.5em; color:var(--ink); line-height:1.1;">BGM 퀴즈</span></div>
+                </div>
+                <div class="game-selector unselected" onclick="selectGame(this, '눈치 게임')">
+                    <div class="game-icon" style="background:#bbb;"><span style="font-size:1.2em;">👀</span></div>
+                    <div class="game-text"><span style="font-family:'Jua'; font-size:1.5em; color:var(--ink); line-height:1.1;">눈치 게임</span></div>
+                </div>
+            </div>
+            
+            <!-- 3-2: 게임 요청 수 배지 -->
+            <div id="gameRequestBadge" style="display:none; background:var(--point-beer); border:var(--border-style); border-radius:999px; padding:6px 16px; font-family:'Jua'; font-size:1.1em; color:var(--ink); margin-bottom:10px; text-align:center; box-shadow:2px 2px 0 var(--ink);">🔥 <span id="gameRequestCount">0</span>명이 게임 시작을 원합니다!</div>
+            <!-- PRD 2.3 화력지원(연타가능) 기능 버튼 -->
+            <button class="btn-callbell soju" style="margin-top:0;" onclick="requestGameGuest()">게임 요청하기</button>
+        </div>
+    </div>
+
+
+    <!-- STEP 8: LIAR ENGINE -->
+    
+    <!-- PHASE 1: DISCUSS -->
+    <div id="view-liar-discuss" class="view" style="padding-bottom:100px;">
+        <div class="deco-icon" style="bottom: 110px; left: 30px; transform: rotate(-10deg); opacity: 0.04;">
+            <svg width="150" height="150" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 16c-2 2-5 2-7 0m-4-6h.01M17 10h.01M12 22C6.48 22 2 17.52 2 12S6.48 2 12 2s10 4.48 10 10-4.48 10-10 10v0z"/></svg>
+        </div>
+        <div class="wf-header" style="justify-content: center;">
+            <div class="wf-title" style="color:var(--point-red); font-size:2em;">⏱️ 다같이 발언 하세요</div>
+        </div>
+        <div style="flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; position:relative; z-index:10;">
+            <div style="width: 150px; height: 150px; border: var(--border-style); border-bottom-width: 8px; box-shadow: var(--hard-shadow); border-radius: 50%; display:flex; flex-direction:column; justify-content:center; align-items:center; background:#fff; margin-bottom: 20px; overflow:hidden; position:relative;">
+                <div id="discussBeerBg" style="position:absolute; bottom:0; left:0; width:100%; height:100%; background:var(--point-beer); z-index:0; opacity:0.8; transition: height 1s linear;"></div>
+                <div id="discussTimer" style="font-family:'Jua'; font-size:3.5em; color:var(--ink); line-height:1; position:relative; z-index:1;">00:20</div>
+            </div>
+            
+            <div class="game-selector" style="flex-direction:column; padding:16px 20px; width:100%; box-sizing:border-box; gap:6px;">
+                <span style="font-size:1em; color:var(--ink-light); font-weight:800;">내 키워드 확인 👀</span>
+                <span id="roleWord" style="font-family:'Jua'; font-size:3em; color:var(--point-red); line-height:1.1; word-break:keep-all;">사과</span>
+                <div style="display:flex; gap:8px; margin-top:6px; flex-wrap:wrap;">
+                    <span id="roleCategory" style="font-size:0.95em; font-weight:800; background:var(--ink); color:#fff; padding:5px 12px; border-radius:10px; white-space:nowrap;">카테고리: [과일]</span>
+                    <span id="roleWordLabel" style="font-size:0.95em; font-weight:800; background:var(--point-soju); color:#fff; padding:5px 12px; border-radius:10px; white-space:nowrap;">🤫 라이어</span>
+                </div>
+            </div>
+            
+            <!-- PRD 역할 블라인드 룰 텍스트 복구 -->
+            <p style="background: rgba(255,255,255,0.7); border-radius: 12px; padding: 12px; border: 1px dashed var(--ink-light); color: var(--ink); font-weight: bold; font-size: 0.9em; text-align: center; margin-top: 10px;">
+                🚨 역할 블라인드 룰 적용 방<br>당신이 라이어라면, 다른 사람들이 보는 진짜 단어와 비슷한 [가짜 단어]를 보고 있습니다. 눈치껏 말하세요!
+            </p>
+        </div>
+        <div class="bottom-floating-control">
+            <button class="btn-outline host-only" onclick="startVotingPhase()">[방장 강제 종료] 투표 가기</button>
+        </div>
+    </div>
+
+    <!-- PHASE 2: VOTE -->
+    <div id="view-liar-vote" class="view" style="padding-bottom: 150px;">
+        <div class="deco-icon" style="top: 150px; right: -25px; transform: rotate(18deg);">
+            <svg width="120" height="120" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M9 8h6v14H9z"/><path d="M11 2h2v6h-2z"/></svg>
+        </div>
+        <div class="wf-header" style="justify-content: center; position:relative; margin-bottom: 20px; margin-top:10px;">
+            <div class="wf-title" style="font-size:2em; color:var(--point-red);">🔍 지목 투표 (<span id="voteTimer" style="color:var(--point-blue)">20</span>초)</div>
+        </div>
+        <div style="flex:1; display:flex; flex-direction:column; gap:8px;" id="liarVoteList"></div>
+        <div class="bottom-floating-control">
+            <button id="voteCompleteBtn" class="btn-callbell" disabled onclick="submitVote()"><span style="font-size:1em;">💬</span> 투표하기</button>
+        </div>
+    </div>
+
+    <!-- PHASE 3: DEFENSE -->
+    <div id="view-liar-defense" class="view" style="padding-bottom:100px;">
+        <div class="wf-header" style="justify-content: center; margin-bottom: 40px;">
+            <div class="wf-title" style="font-size:2em;">🗣️ 최후 변론 타임</div>
+        </div>
+        <div style="flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center; position:relative; z-index:10;">
+            <div id="defenseEmoji" style="width:100px; height:100px; border-radius:50%; display:flex; justify-content:center; align-items:center; font-size:3.5em; background:var(--bg-surface); margin-bottom:20px; border:var(--border-style); box-shadow: 2px 2px 0 var(--ink); overflow:hidden;">🤓</div>
+            <strong id="defenseName" style="font-family:'Jua'; font-size:2.5em; color:var(--point-red); margin-bottom:15px; border-bottom:4px solid var(--point-red);">막내신입</strong>
+            <p style="font-weight:900; font-size:1.35em; color:var(--ink-light); line-height:1.5;">용의자로 지목되었습니다.<br>억울함을 호소하세요!</p>
+            <div id="defenseTimer" style="font-family:'Jua'; font-size:2.5em; color:#fff; background:var(--point-soju); border:var(--border-style); padding:8px 36px; border-radius:8px; box-shadow:var(--hard-shadow); margin-top:40px; transform: rotate(-3deg); outline:2.5px dashed #fff; outline-offset:-5px;">00:20</div>
+        </div>
+        <div class="bottom-floating-control">
+            <button class="btn-outline host-only" onclick="startAgreePhase()">[방장 강제 종료] 판결가기</button>
+        </div>
+    </div>
+
+    <!-- PHASE 4: AGREE -->
+    <div id="view-liar-agree" class="view" style="padding-bottom:120px;">
+        <div class="deco-icon" style="bottom: 120px; left: -10vw; transform: rotate(-5deg); opacity: 0.04;">
+            <svg width="200" height="200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 16c-2 2-5 2-7 0m-4-6h.01M17 10h.01M12 22C6.48 22 2 17.52 2 12S6.48 2 12 2s10 4.48 10 10-4.48 10-10 10v0z"/></svg>
+        </div>
+        <div class="wf-header" style="justify-content: center; margin-bottom: 20px;">
+            <div class="wf-title" style="color:var(--point-blue); font-size:2em;">⚖️ 판결의 시간</div>
+        </div>
+        <div style="flex:1; display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center; position:relative; z-index:10;">
+            <p style="font-weight:900; font-size:1.6em; line-height:1.6; margin-bottom:20px;"><span id="agreeName" style="color:var(--point-red); font-family:'Jua'; font-size:1.7em; border-bottom:4px solid var(--point-red);">막내신입</span> 을 라이어로<br>최종 <span style="background:var(--point-soju); padding:0 5px; color:#fff; border-radius:8px;">확정</span> 하시겠습니까?</p>
+            <!-- PRD 루프 텍스트 -->
+            <p style="font-size:1.1em; font-weight:800; margin-bottom:10px; color:var(--ink-light);" id="failLoopStr">(현재 0회 부결)</p>
+            <div id="agreeTimer" style="font-family:'Jua'; font-size:1.5em; color:var(--point-red); margin-bottom:20px;">남은 시간 00:20</div>
+        </div>
+        
+        <div class="bottom-floating-control" style="flex-direction:row; gap:16px;">
+            <button class="btn-callbell soju" style="flex:1; padding:0 10px;" onclick="handleDisagree()">미동의</button>
+            <button class="btn-callbell" style="flex:1; padding:0 10px;" onclick="handleAgree()">동의</button>
+        </div>
+    </div>
+
+    <!-- PHASE 5: KEYWORD -->
+    <div id="view-liar-keyword" class="view" style="padding-bottom:100px;">
+        <div class="wf-header" style="justify-content: center;">
+            <div class="wf-title" style="color:var(--point-blue); font-size:2em;">🚨 최후의 역전 기회</div>
+        </div>
+        <div style="flex:1; display:flex; flex-direction:column; justify-content:center; text-align:center;">
+            <p id="kwMsg" style="font-size:1.3em; font-weight:900; margin-bottom:20px; color:var(--ink-light);">용의자가 진짜 제시어를 맞추고 있습니다...</p>
+            <div class="input-group" style="border-color:var(--point-blue); justify-content:center; box-shadow: 4px 4px 0 var(--point-blue); padding: 20px;">
+                <input type="text" id="keywordSubmitInput" placeholder="제시어 입력 (엔터 제출)" style="text-align:center; font-size:1.5em; font-family:'Jua';">
+            </div>
+            <div id="keywordTimer" style="font-family:'Jua'; font-size:3em; color:var(--point-red); margin-top:20px;">00:20</div>
+        </div>
+        <div class="bottom-floating-control">
+            <button class="btn-callbell" onclick="finishLiarScoring()">제출 정산</button>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div id="toast">메시지</div>
+
+    <!-- Alert Modal -->
+    <div id="modal-alert-custom" class="modal-overlay">
+        <div class="center-sheet">
+            <div style="font-size:3.5em; margin-bottom:10px;">📢</div>
+            <h3 style="color:var(--ink); margin-bottom:20px; font-size:1.4em; line-height:1.4; word-break:keep-all; font-family:'Jua';" id="customAlertMsg">메시지</h3>
+            <button class="btn-callbell" style="height: 54px; font-size:1.3em;" onclick="closeCustomAlert()">확인</button>
+        </div>
+    </div>
+
+    <!-- Result / Capture Modal -->
+    <div id="modal-result-capture" class="modal-overlay">
+        <div class="center-sheet" style="padding:0; overflow:hidden;" id="result-capture-inner">
+            <div id="result-capture-content" style="padding:40px 20px; background:var(--bg-base);">
+                <div style="font-family:'Jua'; color:var(--point-red); font-size:2.2em; display:inline-block; margin-bottom:15px; line-height:1;">🚨 오늘의 음주왕</div>
+                
+                <div id="topRankersArea" style="display:flex; justify-content:center; gap:10px; margin: 20px 0;"></div>
+                
+                <div id="rankingList" style="text-align:left; font-weight:bold; font-size:1.2em; border:1px solid #ccc; padding:15px; border-radius:var(--soft-radius); background:#fff; margin-bottom: 10px;"></div>
+                <p style="font-family:'Jua'; font-size:1.1em; color:var(--ink-light);">짠! 다같이 술게임 결과</p>
+            </div>
+            
+            <div style="padding:15px; background:#fff; border-top:1px dashed #ccc; display:flex; gap:10px; z-index:20;">
+                <button class="btn-outline" style="flex:1; height:50px;" onclick="shareResult()"><span style="color:#FFE812; font-size:1.2em;">●</span> 카톡 공유</button>
+                <button class="btn-outline" style="flex:1; height:50px; background:var(--bg-base);" onclick="closeModalDirect('modal-result-capture'); exitRoom();">로비 나가기</button>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+    let myInfo = { nickname: '', emoji: '😎', imageUrl: '', isHost: false, score: 0 };
+    let isHostLevel = false;
+
+    // 목업의 라이어는 고정해둠 (PRD 룰 증명용)
+    const trueLiarName = "고인물유저"; 
+
+    let dummyAvatars = [
+        { name: "고인물유저", emoji: "😎", imageUrl: "https://i.pravatar.cc/150?u=42", isHost: true, score: 0 },
+        { name: "은비사랑", emoji: "🥴", imageUrl: "", isHost: false, score: 0 },
+        { name: "막내신입", emoji: "🤮", imageUrl: "", isHost: false, score: 0 },
+    ];
+
+    window.onload = () => { 
+        // PRD 1. 회원가입: 로컬저장 연동
+        const saved = localStorage.getItem('partyGameUser');
+        if (saved) {
+            try {
+                myInfo = JSON.parse(saved);
+                document.getElementById('signupNickname').value = myInfo.nickname;
+                if(myInfo.imageUrl) { document.getElementById('signupEmoji').innerHTML = `<img src="${myInfo.imageUrl}" style="width:100%;height:100%;object-fit:cover; border-radius:50%;">`; }
+                else { document.getElementById('signupEmoji').innerText = myInfo.emoji; }
+            } catch(e) {}
+        } else {
+            generateRandomPName('signupNickname'); 
+        }
+    }
+    
+    const emojis = ['😎','🤮','🥴','🍺','🍻','🤡','🤓','👽','🤑','🫡','🥸','😈','🤪','🥳','😤','🫠','🤯','🫣'];
+
+    // 1-3: 닉네임 경우의 수 대폭 확대 (50×50 = 2,500 조합 + 숫자 suffix)
+    const pfx = [
+        '안주스틸러','만취한','달리는','전설의','오늘은무조건','주량미달','취한척하는',
+        '블랙아웃','몇잔째인지모를','2차거부하는','병맛나는','소주한병','막차탄',
+        '두주불사','눈치없는','삼겹살앞에선','화장실간','새벽감성','혼술하는','인싸인척하는',
+        '유리멘탈','철벽치는','술값내는','빈속에마신','노래방까지간','텐션최고인',
+        '다음날후회할','숙취에시달리는','맥주로시작한','첫잔부터세게간'
+    ];
+    const sfx = [
+        '팀장','은비','박대리','김과장','이주임','최사원','정인턴','황팀장',
+        '오부장','강대리','윤주임','임과장','한사원','서인턴','류팀장','조과장',
+        '고대리','남주임','심사원','석팀장','백인턴','전과장','천대리','방주임',
+        '노사원','공팀장','탁인턴','도과장','모대리','봉주임'
+    ];
+    let cIdx = 0;
+
+    function getDrunkBgColor(score) {
+        if (score >= 3) return "#fca5a5"; 
+        if (score >= 1) return "#fee2e2"; 
+        return "#ffffff"; 
+    }
+
+    function changeEmoji(targetId) { cIdx=(cIdx+1)%emojis.length; const e=document.getElementById(targetId); e.innerHTML=emojis[cIdx]; myInfo.imageUrl=''; }
+
+    // 1-2: 실제 사진 업로드 (FileReader → Base64, 모바일 갤러리 직접 연동)
+    function handlePhotoUpload(event, targetId) {
+        const file = event.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = function(ev) {
+            const base64 = ev.target.result;
+            const el = document.getElementById(targetId);
+            el.innerHTML = '<img src="' + base64 + '" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">';
+            myInfo.imageUrl = base64;
+            // 프로필 모달이면 저장도 연동
+            if (targetId === 'currentEmoji') {
+                localStorage.setItem('partyGameUser', JSON.stringify(myInfo));
+            }
+        };
+        reader.readAsDataURL(file);
+    }
+    function uploadPhotoMock(targetId) { const e=document.getElementById(targetId); e.innerHTML=`<img src="https://i.pravatar.cc/150?u=123" style="width:100%;height:100%;object-fit:cover; border-radius:50%;">`; myInfo.imageUrl="https://i.pravatar.cc/150?u=123"; }
+    // 1-3: 닉네임 랜덤 생성 - 숫자 suffix 포함 (30×30×99 ≈ 89,100 조합)
+    function generateRandomPName(inputId) {
+        const p = pfx[Math.floor(Math.random() * pfx.length)];
+        const s = sfx[Math.floor(Math.random() * sfx.length)];
+        const num = Math.floor(Math.random() * 99) + 1;
+        const combined = (p + s + num).substring(0, 8);
+        document.getElementById(inputId).value = combined;
+    }
+    
+    function switchView(id) { document.querySelectorAll('.view').forEach(v=>v.classList.remove('active')); document.getElementById(id).classList.add('active'); }
+    
+    let alertCallback = null;
+    let _alertAutoCloseTimer = null;
+    function showCustomAlert(msg, callback, autoClose=false) {
+        if (typeof msg === 'string' && (msg.includes('<') || msg.includes('&'))) {
+            document.getElementById('customAlertMsg').innerHTML = msg;
+        } else {
+            document.getElementById('customAlertMsg').innerText = msg;
+        }
+        document.getElementById('modal-alert-custom').classList.add('active');
+        alertCallback = callback;
+        // autoClose: true 시 2.5초 후 자동 닫기
+        if (_alertAutoCloseTimer) clearTimeout(_alertAutoCloseTimer);
+        if (autoClose) {
+            _alertAutoCloseTimer = setTimeout(() => {
+                if (document.getElementById('modal-alert-custom').classList.contains('active')) {
+                    closeCustomAlert();
+                }
+            }, 2500);
+        }
+    }
+    function closeCustomAlert() {
+        if (_alertAutoCloseTimer) { clearTimeout(_alertAutoCloseTimer); _alertAutoCloseTimer = null; }
+        document.getElementById('modal-alert-custom').classList.remove('active');
+        const cb = alertCallback;
+        alertCallback = null;
+        if (cb) cb();
+    }
+    function closeModalDirect(id) { document.getElementById(id).classList.remove('active'); }
+
+    function handleSignup() {
+        const nn = document.getElementById('signupNickname').value.trim();
+        if(!nn) return showCustomAlert('닉네임을 입력하세요!');
+        myInfo.nickname = nn; 
+        // 이미지가 없을 때만 emoji 텍스트 저장 (이미지 있으면 imageUrl 유지)
+        const emojiEl = document.getElementById('signupEmoji');
+        const hasImg = emojiEl.querySelector('img');
+        if (!hasImg) {
+            const eText = emojiEl.innerText;
+            myInfo.emoji = eText ? eText : '😎';
+            myInfo.imageUrl = '';  // 이미지 없으면 초기화
+        }
+        
+        // 로컬 저장 완료
+        localStorage.setItem('partyGameUser', JSON.stringify(myInfo));
+
+        applyProfileToLobby();
+        switchView('view-lobby');
+    }
+
+    function applyProfileToLobby() {
+        document.getElementById('lobbyUserName').innerText = myInfo.nickname;
+        const lobEmojiEl = document.getElementById('lobbyUserEmoji');
+        if (myInfo.imageUrl) { lobEmojiEl.innerHTML=`<img src="${myInfo.imageUrl}" style="width:100%;height:100%;object-fit:cover; border-radius:50%;">`; } 
+        else { lobEmojiEl.innerHTML=myInfo.emoji; }
+    }
+
+    function openProfileModal() {
+        document.getElementById('modal-edit-profile').classList.add('active');
+        document.getElementById('nicknameInput').value = myInfo.nickname;
+        if (myInfo.imageUrl) { document.getElementById('currentEmoji').innerHTML = `<img src="${myInfo.imageUrl}" style="width:100%;height:100%;object-fit:cover; border-radius:50%;">`; }
+        else { document.getElementById('currentEmoji').innerText = myInfo.emoji; }
+    }
+
+    function saveProfile() {
+        const nn = document.getElementById('nicknameInput').value.trim();
+        if(!nn) return showCustomAlert('닉네임을 입력하세요!');
+        myInfo.nickname = nn; 
+        const eText = document.getElementById('currentEmoji').innerText;
+        myInfo.emoji = eText ? eText : '😎';
+        
+        localStorage.setItem('partyGameUser', JSON.stringify(myInfo));
+
+        applyProfileToLobby();
+        closeModalDirect('modal-edit-profile');
+        
+        if (document.getElementById('view-room').classList.contains('active')) {
+            renderRoomAvatars(isHostLevel);
+        }
+    }
+
+    function filterRooms() {
+        const term = document.getElementById('roomSearchInput').value.trim().toLowerCase();
+        // Gate 4: 서버에서 받은 실시간 방 목록 필터링
+        if (latestRoomList.length > 0) {
+            renderRoomList(latestRoomList.filter(r => r.name.toLowerCase().includes(term)));
+        } else {
+            // Gate 3 폴백: 로컬 DOM 필터
+            document.querySelectorAll('.room-card-item').forEach(el => {
+                const title = el.getAttribute('data-name')?.toLowerCase() || '';
+                el.style.display = title.includes(term) ? 'flex' : 'none';
+            });
+        }
+    }
+
+    let currentClickRoomName = '';
+    function tryJoinLockRoom(rName) {
+        currentClickRoomName = rName;
+        document.getElementById('pwRoomNameLabel').innerText = rName;
+        document.getElementById('modal-enter-password').classList.add('active');
+    }
+
+    // ======================================================
+    // Gate 4: 소켓 기반 방 입장 (Mock 대체)
+    // ======================================================
+    function joinRoomMock(asHost, rName) {
+        // 하위 호환성 유지 — 소켓 연결 실패 시 Mock으로 폴백
+        if (!socket || !socket.connected) {
+            closeModalDirect('modal-create-room');
+            closeModalDirect('modal-enter-password');
+            setupRoom(asHost, rName);
+            switchView('view-room');
+            return;
+        }
+        const pw = document.querySelector('#modal-enter-password input')?.value || '';
+        if (asHost) {
+            const roomName = document.getElementById('createRoomNameInput').value.trim() || '새로운 테이블';
+            const roomPw   = document.querySelector('#modal-create-room input[type=password]')?.value || '';
+            socket.emit('room:create', {
+                name: roomName,
+                password: roomPw,
+                user: { nickname: myInfo.nickname, emoji: myInfo.emoji, photoUrl: myInfo.imageUrl || null }
+            }, (res) => {
+                if (!res.success) return showCustomAlert(res.message);
+                closeModalDirect('modal-create-room');
+                currentRoomId = res.room.id;
+                currentInviteCode = res.room.inviteCode;
+                currentInvitePw   = res.room.invitePassword;
+                setupRoom(true, res.room.name);
+                renderSocketAvatars(res.users);
+                switchView('view-room');
+                showToast(`방 생성 완료! ID: ${res.room.id}`);
+            });
+        } else {
+            // 비밀방 입장
+            socket.emit('room:join', {
+                roomId: currentClickRoomId,
+                password: pw,
+                user: { nickname: myInfo.nickname, emoji: myInfo.emoji, photoUrl: myInfo.imageUrl || null }
+            }, (res) => {
+                if (!res.success) return showCustomAlert(res.message);
+                closeModalDirect('modal-enter-password');
+                currentRoomId = res.room.id;
+                setupRoom(false, res.room.name);
+                renderSocketAvatars(res.users);
+                isHostLevel = res.hostSocketId === socket.id;
+                updateRoomControls();
+                switchView('view-room');
+            });
+        }
+    }
+
+    // 공개방 클릭 입장
+    function joinOpenRoom(roomId, rName) {
+        if (!socket || !socket.connected) return joinRoomMock(false, rName);
+        currentClickRoomId = roomId;
+        socket.emit('room:join', {
+            roomId,
+            password: '',
+            user: { nickname: myInfo.nickname, emoji: myInfo.emoji, photoUrl: myInfo.imageUrl || null }
+        }, (res) => {
+            if (!res.success) return showCustomAlert(res.message);
+            currentRoomId = res.room.id;
+            setupRoom(false, res.room.name);
+            renderSocketAvatars(res.users);
+            isHostLevel = res.hostSocketId === socket.id;
+            updateRoomControls();
+            switchView('view-room');
+        });
+    }
+
+    function setupRoom(asHost, rName) {
+        isHostLevel = asHost;
+        myInfo.isHost = asHost;
+        myInfo.score = 0; 
+        dummyAvatars.forEach(u => u.score = 0); 
+
+        document.getElementById('headerRoomTitle').innerText = rName;
+        document.getElementById('host-controls').style.display = asHost ? 'flex' : 'none';
+        document.getElementById('guest-controls').style.display = asHost ? 'none' : 'flex';
+        
+        document.querySelectorAll('.host-only').forEach(btn => {
+            btn.style.display = asHost ? 'flex' : 'none';
+        });
+        
+        document.getElementById('roomCount').innerText = `${dummyAvatars.length + 1}명`;
+        renderRoomAvatars(asHost);
+    }
+
+    function renderRoomAvatars(asHost) {
+        const grid = document.getElementById('avatarGrid');
+        let allUsers = [myInfo, ...dummyAvatars];
+        let maxScore = Math.max(...allUsers.map(u => u.score));
+        
+        grid.innerHTML = '';
+        
+        allUsers.forEach((u, i) => {
+            const isMe = (u === myInfo);
+            const isHostNode = (isMe && asHost) || (!isMe && u.isHost);
+            const isCrownTarget = (u.score > 0 && u.score === maxScore); // PRD: 최고점을 가진 자에게 왕관 씌워주기
+
+            const imgHTML = u.imageUrl ? `<img src="${u.imageUrl}" style="width:100%;height:100%;object-fit:cover; border-radius:50%;">` : u.emoji;
+            const crownHtml = isCrownTarget ? `<div class="host-crown"><svg width="18" height="18" viewBox="0 0 24 24" fill="var(--point-red)" stroke="var(--ink)" stroke-width="3" stroke-linejoin="round"><path d="M2 22h20M2 20l4-12 4 6 2-10 2 10 4-6 4 12"/></svg></div>` : '';
+            
+            let label = u.name;
+            if(isMe) label += asHost ? ' (계산자)' : ' (나)';
+
+            grid.innerHTML += `
+                <div class="wf-avatar-card ${isMe ? 'is-me' : ''}" id="${isMe ? 'avatar-me' : ''}">
+                    ${crownHtml}
+                    <div class="wf-emoji" style="background-color:${getDrunkBgColor(u.score)}">${imgHTML}</div>
+                    <div class="avatar-name">${label}</div>
+                    <div class="avatar-score">🍻 ${u.score} 잔</div>
+                </div>`;
+        });
+    }
+
+    let roomSelectedGameName = '라이어 게임';
+    function selectGame(el, gameName) {
+        const wrapper = el.parentElement;
+        wrapper.querySelectorAll('.game-selector').forEach(sel => {
+            sel.classList.remove('selected');
+            sel.classList.add('unselected');
+            sel.querySelector('.game-icon').style.background = '#bbb';
+        });
+        el.classList.add('selected');
+        el.classList.remove('unselected');
+        el.querySelector('.game-icon').style.background = 'var(--point-soju)';
+        roomSelectedGameName = gameName;
+    }
+
+    function startGameHost() {
+        if (!socket || !socket.connected) {
+            // Gate 3 폴백
+            if (roomSelectedGameName === '라이어 게임') startLiarEngine();
+            else showCustomAlert('구현 예정인 기능입니다! (준비중)');
+            return;
+        }
+        socket.emit('game:start', { gameName: roomSelectedGameName }, (res) => {
+            if (!res.success) showCustomAlert(res.message || '게임 시작 실패');
+        });
+    }
+
+    function requestGameGuest() {
+        // Gate 4: 소켓으로 방 전체에 알림 전송
+        if (socket && socket.connected) {
+            socket.emit('game:request', { gameName: roomSelectedGameName });
+        }
+        // 로컬 즉시 시각 효과 (자신 화면)
+        _showGameRequestEffect(roomSelectedGameName);
+    }
+
+    function _showGameRequestEffect(gameName) {
+        const myAvatarNode = document.getElementById('avatar-me');
+        if (myAvatarNode) {
+            const existing = myAvatarNode.querySelector('.speech-bubble');
+            if (existing) existing.remove();
+            const bubble = document.createElement('div');
+            bubble.className = 'speech-bubble';
+            bubble.innerText = `[${gameName}] 진행시켜!`;
+            myAvatarNode.appendChild(bubble);
+            setTimeout(() => { if(bubble.parentNode) bubble.remove(); }, 2000);
+        }
+        // PRD 2.3 화력 지원 플래시
+        const flasher = document.getElementById('flashScreen');
+        flasher.classList.remove('flash-active');
+        void flasher.offsetWidth;
+        flasher.classList.add('flash-active');
+    }
+
+    function exitRoom() { switchView('view-lobby'); }
+
+    function copyInviteBoard() {
+        const roomName = document.getElementById('headerRoomTitle').innerText;
+        // Gate 4: 서버에서 받은 실제 초대코드 & 비밀번호 사용
+        const link = currentInviteCode || `http://localhost:3000/join/${currentRoomId || 'XXXXXXXX'}`;
+        const pwLine = currentInvitePw ? `비밀번호: ${currentInvitePw}` : '비밀번호: 없음 (공개방)';
+        const txt = `[짠! 다같이 술게임]\n방 이름: ${roomName}\n${pwLine}\n초대 링크: ${link}`;
+        if(navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(txt).then(()=>showToast('초대 정보가 복사되었습니다!')).catch(()=>showToast('복사 실패!'));
+        } else {
+            showToast('초대 정보가 복사되었습니다!');
+        }
+    }
+    function showToast(msg) {
+        const t = document.getElementById('toast');
+        if(msg) t.innerText = msg;
+        t.className = "show";
+        setTimeout(() => { t.className = t.className.replace("show", ""); }, 3000);
+    }
+
+    // --- Liar JS Engine (Gate 3 폴백용 — 소켓 연결 시 서버가 제어) ---
+    let failLoopCount = 0;
+    let isForceMode = false;
+    let selectedSuspect = null;
+    let activeTimer = null;
+
+    function startTick(elementId, seconds, onComplete, tickCallback) {
+        // 4-1: 소켓 연결 시 클라이언트 타이머 완전 차단
+        if (socket && socket.connected) return;
+        clearInterval(activeTimer);
+        const el = document.getElementById(elementId);
+        let t = seconds;
+        let maxT = seconds;
+        const tick = () => {
+            if (t <= 0) {
+                clearInterval(activeTimer); 
+                if(el) el.innerText = "00:00"; 
+                if(tickCallback) tickCallback(0, maxT);
+                if(onComplete) onComplete();
+            } else {
+                let m = Math.floor(t / 60); let s = t % 60; 
+                if(el) el.innerText = `${elementId==='agreeTimer'?'남은 시간 ':''}${m<10?'0'+m:m}:${s<10?'0'+s:s}`;
+                if(tickCallback) tickCallback(t, maxT);
+            }
+            t--;
+        };
+        tick();
+        activeTimer = setInterval(tick, 1000);
+    }
+
+    // 4-4: 소켓 연결 중엔 클라이언트 엔진 실행 차단
+    function startLiarEngine() {
+        if (socket && socket.connected) return; // 서버가 game:phase로 제어
+        failLoopCount = 0; isForceMode = false;
+        document.getElementById('keywordSubmitInput').value = '';
+        switchView('view-liar-discuss');
+        
+        const beerBg = document.getElementById('discussBeerBg');
+        // PRD 3-4. 가변 토론 타임 (인원*30초 + 60초) 하지만 기존 피드백 20초 단축 반영
+        startTick('discussTimer', 20, () => { if (isHostLevel) startVotingPhase(); }, (currentSec, maxSec) => {
+            if(beerBg) {
+                const percent = (currentSec / maxSec) * 100;
+                beerBg.style.height = `${percent}%`;
+            }
+        });
+    }
+
+    // 3-3: 방장 스킵 → 소켓 연결 시 서버에 알림, 비연결 시 로컬 처리
+    function startVotingPhase() {
+        if (socket && socket.connected) {
+            // 서버에 토론 스킵 요청 → 서버가 VOTING 페이즈 브로드캐스트
+            socket.emit('game:phase_skip', { skipTo: 'VOTING' });
+            return;
+        }
+        // Gate 3 폴백 (소켓 미연결 시)
+        clearInterval(activeTimer);
+        selectedSuspect = null;
+        const btn = document.getElementById('voteCompleteBtn');
+        btn.disabled = true;
+        btn.innerHTML = '<span style="font-size:1em;">💬</span> 투표하기';
+        const listDiv = document.getElementById('liarVoteList');
+        listDiv.innerHTML = '';
+        [myInfo, ...dummyAvatars].forEach(function(u) {
+            const dispEmoji = u.imageUrl ? '<img src="'+u.imageUrl+'" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">' : u.emoji;
+            listDiv.innerHTML += '<div class="vote-row" onclick="selectSuspectNode(this,\'' + u.name + '\',\'' + (u.imageUrl||u.emoji) + '\')"><span style="display:flex;align-items:center;gap:14px;"><div style="font-size:1.5em;width:34px;height:34px;border-radius:50%;overflow:hidden;display:flex;justify-content:center;align-items:center;border:2px solid var(--ink);background:' + getDrunkBgColor(u.score) + '">' + dispEmoji + '</div>' + u.name + '</span><div class="custom-check"><svg class="check-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" style="opacity:0;"><polyline points="20 6 9 17 4 12"/></svg></div></div>';
+        });
+        switchView('view-liar-vote');
+        startTick('voteTimer', 20, function() { if(isHostLevel) submitVote(); });
+    }
+
+    let currentSuspectName = ''; let currentSuspectEmoji = '';
+    function selectSuspectNode(el, name, emojiOrUrl) {
+        document.querySelectorAll('.vote-row').forEach(row => {
+            row.classList.remove('selected'); row.querySelector('.check-icon').style.opacity = '0';
+        });
+        el.classList.add('selected'); el.querySelector('.check-icon').style.opacity = '1';
+        currentSuspectName = name; currentSuspectEmoji = emojiOrUrl;
+        document.getElementById('voteCompleteBtn').disabled = false;
+    }
+
+    function submitVote() {
+        if (socket && socket.connected) {
+            if (!selectedSuspectSocketId) { showToast('투표할 대상을 선택하세요!'); return; }
+            socket.emit('game:vote', { targetSocketId: selectedSuspectSocketId });
+            const btn = document.getElementById('voteCompleteBtn');
+            btn.disabled = true;
+            btn.innerText = '투표 완료!';
+            return;
+        }
+        // Gate3 폴백
+        if(!currentSuspectName) currentSuspectName = dummyAvatars[2]?.name || '???';
+        const btn = document.getElementById('voteCompleteBtn');
+        btn.disabled = true;
+        btn.innerText = '결과 취합 중...';
+        setTimeout(() => {
+            showCustomAlert('<span style="color:var(--point-blue); font-size:1.2em;">[' + currentSuspectName + ']</span><br/>가장 많은 표를 받아 지목되었습니다!', () => {
+                if(isForceMode) {
+                    showCustomAlert('룰에 따라 무조건 확정되었습니다.', () => startKeywordPhase());
+                } else {
+                    startDefensePhase();
+                }
+            }, true);
+        }, 1500);
+    }
+
+    function startDefensePhase() {
+        // 소켓 연결 시 → 서버에 DEFENSE 스킵 요청 (서버가 game:phase 브로드캐스트)
+        if (socket && socket.connected) {
+            socket.emit('game:phase_skip', { skipTo: 'DEFENSE' });
+            return;
+        }
+        // Gate3 폴백
+        document.getElementById('defenseName').innerText = currentSuspectName;
+        if(currentSuspectEmoji && currentSuspectEmoji.includes('http')) {
+            document.getElementById('defenseEmoji').innerHTML = `<img src="${currentSuspectEmoji}" style="width:100%;height:100%;object-fit:cover; border-radius:50%;">`;
+        } else {
+            document.getElementById('defenseEmoji').innerText = currentSuspectEmoji || '😶';
+        }
+        switchView('view-liar-defense');
+        startTick('defenseTimer', 20, () => { if(isHostLevel) startAgreePhase(); });
+    }
+
+    function startAgreePhase() {
+        // 소켓 연결 시 → 서버에 AGREE 스킵 요청
+        if (socket && socket.connected) {
+            socket.emit('game:phase_skip', { skipTo: 'AGREE' });
+            return;
+        }
+        // Gate3 폴백
+        clearInterval(activeTimer);
+        document.getElementById('agreeName').innerText = currentSuspectName;
+        document.getElementById('failLoopStr').innerText = failLoopCount >= 1 ? `(미동의 누적 1회. 이번 부결 시 무조건 확정됨!)` : `(현재 미동의 0회)`;
+        switchView('view-liar-agree');
+        startTick('agreeTimer', 20, () => { if(isHostLevel) handleAgree(); });
+    }
+    
+    function handleDisagree() {
+        if (socket && socket.connected) {
+            socket.emit('game:agree', { agreed: false });
+            return;
+        }
+        // Gate3 폴백
+        failLoopCount++;
+        if(failLoopCount >= 2) {
+            isForceMode = true;
+            showCustomAlert('2회 부결 누적! 마지막 발언을 거치며, 다음 지목자는 무조건 라이어로 확정됩니다.', () => { startLiarEngine(); });
+        } else {
+            showCustomAlert(`1차 미동의 부결! 발언 시간을 추가 부여하고 재투표합니다.`, () => { startLiarEngine(); });
+        }
+    }
+    
+    function handleAgree() {
+        if (socket && socket.connected) {
+            socket.emit('game:agree', { agreed: true });
+            return;
+        }
+        // Gate3 폴백
+        showCustomAlert('<span style="color:var(--point-red); font-size:1.2em;">라이어로 최종 판결났습니다.</span><br/><br/>역전 스테이지로 이동합니다.', () => { startKeywordPhase(); }, true);
+    }
+
+    function startKeywordPhase() {
+        switchView('view-liar-keyword');
+        document.getElementById('kwMsg').innerText = `[${currentSuspectName}] 님이 시민들의 진짜 제시어를 맞추고 있습니다...`;
+        
+        const kwInput = document.getElementById('keywordSubmitInput');
+        kwInput.disabled = false; 
+        kwInput.value = '';
+        kwInput.onkeydown = (e) => { if (e.key === 'Enter') finishLiarScoring(); };
+        
+        startTick('keywordTimer', 20, () => { if (isHostLevel) finishLiarScoring(); });
+    }
+
+    function finishLiarScoring() {
+        clearInterval(activeTimer);
+        const inputKey = document.getElementById('keywordSubmitInput').value.trim();
+        if (socket && socket.connected) {
+            // 비용의자는 제출 불가 (입력창 disabled 체크)
+            const kwInput = document.getElementById('keywordSubmitInput');
+            if (kwInput.disabled) return;
+            if (!inputKey) { showToast('제시어를 입력해주세요!'); return; }
+            socket.emit('game:keyword', { keyword: inputKey });
+            kwInput.disabled = true;
+            const btn = document.querySelector('#view-liar-keyword .btn-callbell');
+            if (btn) btn.disabled = true;
+            return;
+        }
+        // Gate3 폴백
+        const targetWord = "사과"; 
+        const isLiarWin = (inputKey === targetWord); 
+        
+        let targetUser = [myInfo, ...dummyAvatars].find(u => u.name === currentSuspectName);
+        let rHtml = "";
+
+        // PRD 3-6. 점수 산정 (심판) 규정 완벽 복구
+        if(isLiarWin) {
+            if (currentSuspectName === trueLiarName) {
+                // 당사자가 진짜 라이어였다면: +2점 획득 (가장 취함)
+                targetUser.score += 2;
+                rHtml = `<span style="font-size:3em;">🎉</span><br/><strong style="color:var(--point-beer); font-size:1.5em; font-family:'Jua';">라이어 대역전 승리!</strong><br/><br/>본인이 진짜 라이어였습니다.<br/>(+2잔 벌칙 획득)`;
+            } else {
+                // 생사람 잡힌 시민이었다면: +1점 획득
+                targetUser.score += 1;
+                rHtml = `<span style="font-size:3em;">🎉</span><br/><strong style="color:var(--point-beer); font-size:1.5em; font-family:'Jua';">라이어 대역전 승리!</strong><br/><br/>당사자는 억울한 시민이었습니다.<br/>(+1잔 벌칙 획득) (진짜 라이어: 고인물유저)`;
+            }
+        } else {
+            // 시민 승리: 선정자는 무조건 0점. 다른 구성원들(시민 전원)은 합심의 조건으로 각각 +1점 획득.
+            [myInfo, ...dummyAvatars].forEach(u => {
+                if(u.name !== currentSuspectName) u.score += 1;
+            });
+            rHtml = `<span style="font-size:3em;">🎯</span><br/><strong style="color:var(--point-blue); font-size:1.5em; font-family:'Jua';">시민 압승!</strong><br/><br/>제출어: [${inputKey||'없음'}], 정답: [${targetWord}]<br/><br/><strong style="font-size:1.1em; color:var(--point-red);">용의자 생존(0점)!<br>나머지 시민 전원 축배 🍻 +1잔</strong>`;
+        }
+        
+        showCustomAlert(rHtml, () => { 
+            renderRoomAvatars(isHostLevel); 
+            switchView('view-room'); 
+        }, true);
+    }
+
+    // 술자리 종료
+    function finishRoom() {
+        let allUsers = [myInfo, ...dummyAvatars].sort((a,b) => b.score - a.score);
+        let topScore = allUsers[0].score;
+        let topRankers = allUsers.filter(u => u.score === topScore); 
+        
+        let topHtml = '';
+        topRankers.forEach(u => {
+            const imgHTML = u.imageUrl ? `<img src="${u.imageUrl}" style="width:100%;height:100%;object-fit:cover; border-radius:50%;">` : u.emoji;
+            topHtml += `<div style="display:flex; flex-direction:column; align-items:center;">
+                            <div style="width:80px; height:80px; border-radius:50%; border:var(--border-style); box-shadow:2px 2px 0 var(--ink); display:flex; justify-content:center; align-items:center; font-size:3em; background-color:${getDrunkBgColor(u.score)}; overflow:hidden; margin-bottom:5px;">
+                                ${imgHTML}
+                            </div>
+                            <span style="font-family:'Jua'; font-size:1.4em; color:var(--ink);">${u.name}</span>
+                        </div>`;
+        });
+        document.getElementById('topRankersArea').innerHTML = topHtml;
+
+        let html = '';
+        allUsers.forEach((u, idx) => {
+            let rankEmoji = (u.score > 0 && u.score === topScore) ? '🥇' : '👏';
+            if (u.score === 0) rankEmoji = '😇'; 
+            html += `<div style="display:flex; justify-content:space-between; margin-bottom:10px; border-bottom:1px dashed #ccc; padding-bottom:5px;">
+                        <span>${rankEmoji} ${u.name}</span>
+                        <span style="color:var(--point-red); font-family:'Jua';">🍻 ${u.score} 잔</span>
+                     </div>`;
+        });
+        
+        document.getElementById('rankingList').innerHTML = html;
+        document.getElementById('modal-result-capture').classList.add('active');
+    }
+
+    function shareResult() {
+        const captureArea = document.getElementById('result-capture-content');
+        html2canvas(captureArea, { backgroundColor: '#ffffff' }).then(canvas => {
+            const imgData = canvas.toDataURL("image/jpeg");
+            showToast('랭킹 이미지가 캡쳐되어 공유 팝업이 뜹니다!');
+        });
+    }
+
+
+    // ======================================================
+    // Gate 4: Socket.io 클라이언트 — 전체 이벤트 레이어
+    // ======================================================
+
+    // --- 상태 변수 ---
+    let socket = null;
+    let currentRoomId    = null;
+    let currentInviteCode = null;
+    let currentInvitePw  = null;
+    let currentClickRoomId = null;
+    let latestRoomList   = [];
+    let mySocketId       = null;
+
+    // --- Socket 초기화 (DOMContentLoaded 이후) ---
+    window.addEventListener('load', () => {
+        try {
+            socket = io();
+
+            // 접속 성공
+            socket.on('connect', () => {
+                mySocketId = socket.id;
+                console.log('[소켓 연결]', socket.id);
+                socket.emit('room:list'); // 로비 방 목록 요청
+            });
+
+            // ---- 방 목록 수신 ----
+            socket.on('room:list', (rooms) => {
+                latestRoomList = rooms;
+                // 로비가 활성화된 경우에만 렌더링
+                if (document.getElementById('view-lobby').classList.contains('active')) {
+                    renderRoomList(rooms);
+                }
+            });
+
+            // ---- 방 유저 목록 갱신 ----
+            socket.on('room:users', (users) => {
+                renderSocketAvatars(users);
+                document.getElementById('roomCount').innerText = `${users.length}명`;
+                // 방장 변경 반영
+                const me = users.find(u => u.socketId === socket.id);
+                if (me) {
+                    isHostLevel = me.isHost;
+                    updateRoomControls();
+                }
+            });
+
+            // ---- 방장 변경 ----
+            socket.on('room:host_changed', ({ newHostSocketId }) => {
+                isHostLevel = (newHostSocketId === socket.id);
+                updateRoomControls();
+                if (isHostLevel) showToast('방장이 되었습니다! 🎉');
+            });
+
+            // ---- 게임 요청 알림 (화력지원) ----
+            socket.on('game:request:broadcast', ({ requesterSocketId, requesterNickname, gameName }) => {
+                // 3-1: 요청자 아바타에 말풍선 표시 (다른 사람 화면에도 보임)
+                const avatarEl = document.getElementById('avatar-' + requesterSocketId);
+                if (avatarEl) {
+                    const existing = avatarEl.querySelector('.speech-bubble');
+                    if (existing) existing.remove();
+                    const bubble = document.createElement('div');
+                    bubble.className = 'speech-bubble';
+                    bubble.innerText = '[' + gameName + '] 진행시켜!';
+                    avatarEl.appendChild(bubble);
+                    setTimeout(() => { if(bubble.parentNode) bubble.remove(); }, 2500);
+                }
+                // 3-2: 요청 수 카운터 증가
+                const badge = document.getElementById('gameRequestBadge');
+                const counter = document.getElementById('gameRequestCount');
+                if (badge && counter) {
+                    const cur = parseInt(counter.innerText) + 1;
+                    counter.innerText = cur;
+                    badge.style.display = 'block';
+                    clearTimeout(badge._hideTimer);
+                    badge._hideTimer = setTimeout(() => {
+                        badge.style.display = 'none';
+                        counter.innerText = '0';
+                    }, 5000);
+                }
+                showToast(requesterNickname + '님이 [' + gameName + '] 요청!');
+                const flasher = document.getElementById('flashScreen');
+                flasher.classList.remove('flash-active');
+                void flasher.offsetWidth;
+                flasher.classList.add('flash-active');
+            });
+
+            // ---- 라이어 게임: 역할 및 단어 수신 ----
+            socket.on('game:role', ({ isLiar, word, category }) => {
+                document.getElementById('keywordSubmitInput').value = '';
+                document.getElementById('roleWord').innerText = word;
+                // 3-2: 카테고리 / 키워드 라벨 갱신
+                const catEl = document.getElementById('roleCategory');
+                if (catEl) catEl.innerText = '카테고리: [' + category + ']';
+                const wlEl = document.getElementById('roleWordLabel');
+                if (wlEl) wlEl.innerText = isLiar ? '🤫 라이어 (가짜 키워드)' : '😊 시민 (진짜 키워드)';
+                if (wlEl) wlEl.style.background = isLiar ? 'var(--point-red)' : 'var(--point-soju)';
+                switchView('view-liar-discuss');
+            });
+
+            // ---- 게임 페이즈 수신 ----
+            socket.on('game:phase', (data) => {
+                switch(data.phase) {
+                    case 'DISCUSSING':
+                        switchView('view-liar-discuss');
+                        document.getElementById('failLoopStr').innerText =
+                            data.rejectCount > 0 ? `(미동의 ${data.rejectCount}회 누적)` : '(현재 미동의 0회)';
+                        break;
+
+                    case 'VOTING':
+                        selectedSuspect = null;
+                        const btn = document.getElementById('voteCompleteBtn');
+                        btn.disabled = true;
+                        btn.innerHTML = `<span style="font-size:1em;">💬</span> 투표하기`;
+                        // 서버에서 받은 유저 목록으로 투표 리스트 생성
+                        if (data.users) _renderVoteList(data.users);
+                        switchView('view-liar-vote');
+                        break;
+
+                    case 'DEFENSE':
+                        // accusedName/Emoji는 game:accused 이벤트에서 이미 세팅됨
+                        switchView('view-liar-defense');
+                        break;
+
+                    case 'AGREE':
+                        document.getElementById('failLoopStr').innerText =
+                            data.rejectCount >= 1 ? `(미동의 누적 1회. 이번 부결 시 무조건 확정됨!)` : '(현재 미동의 0회)';
+                        // agreeName은 game:accused 이벤트에서 이미 세팅됨
+                        switchView('view-liar-agree');
+                        break;
+
+                    case 'KEYWORD': {
+                        switchView('view-liar-keyword');
+                        const kwSubmitBtn = document.querySelector('#view-liar-keyword .btn-callbell');
+                        if (data.isAccused) {
+                            document.getElementById('kwMsg').innerText = '시민들의 진짜 제시어를 입력하세요!';
+                            const kwInput2 = document.getElementById('keywordSubmitInput');
+                            kwInput2.disabled = false;
+                            kwInput2.value = '';
+                            kwInput2.focus();
+                            // 엔터키 제출 활성화
+                            kwInput2.onkeydown = (e) => { if (e.key === 'Enter') finishLiarScoring(); };
+                            if (kwSubmitBtn) kwSubmitBtn.style.display = '';
+                        } else {
+                            document.getElementById('kwMsg').innerText = '용의자가 키워드를 입력 중입니다... ⌨️';
+                            const kwInput2 = document.getElementById('keywordSubmitInput');
+                            kwInput2.disabled = true;
+                            kwInput2.value = '';
+                            kwInput2.placeholder = '잠시만 기다려주세요...';
+                            kwInput2.onkeydown = null;
+                            if (kwSubmitBtn) kwSubmitBtn.style.display = 'none';
+                        }
+                        break;
+                    }
+                }
+            });
+
+            // ---- 서버 타이머 수신 ----
+            socket.on('game:timer', ({ sec, totalSec }) => {
+                const activeView = document.querySelector('.view.active');
+                if (!activeView) return;
+                const viewId = activeView.id;
+
+                if (viewId === 'view-liar-discuss') {
+                    const m = Math.floor(sec / 60), s = sec % 60;
+                    const el = document.getElementById('discussTimer');
+                    if (el) el.innerText = `${m<10?'0'+m:m}:${s<10?'0'+s:s}`;
+                    // 맥주 잔 애니메이션
+                    const beerBg = document.getElementById('discussBeerBg');
+                    if (beerBg) beerBg.style.height = `${(sec / totalSec) * 100}%`;
+                } else if (viewId === 'view-liar-vote') {
+                    const el = document.getElementById('voteTimer');
+                    if (el) el.innerText = sec;
+                } else if (viewId === 'view-liar-defense') {
+                    const m = Math.floor(sec / 60), s = sec % 60;
+                    const el = document.getElementById('defenseTimer');
+                    if (el) el.innerText = `${m<10?'0'+m:m}:${s<10?'0'+s:s}`;
+                } else if (viewId === 'view-liar-agree') {
+                    const m = Math.floor(sec / 60), s = sec % 60;
+                    const el = document.getElementById('agreeTimer');
+                    if (el) el.innerText = `남은 시간 ${m<10?'0'+m:m}:${s<10?'0'+s:s}`;
+                } else if (viewId === 'view-liar-keyword') {
+                    const m = Math.floor(sec / 60), s = sec % 60;
+                    const el = document.getElementById('keywordTimer');
+                    if (el) el.innerText = `${m<10?'0'+m:m}:${s<10?'0'+s:s}`;
+                }
+            });
+
+            // ---- 투표 수 실시간 표시 ----
+            socket.on('game:vote_count', ({ voteCount }) => {
+                const btn = document.getElementById('voteCompleteBtn');
+                if (btn && btn.disabled) btn.innerText = `결과 취합 중... (${voteCount}표)`;
+            });
+
+            // ---- 4-5: 무투표 랜덤 지목 팝업 ----
+            socket.on('game:accused_random', ({ accusedNickname }) => {
+                showCustomAlert(
+                    '<span style="font-size:2em;">🎲</span><br>아무도 투표를 하지 않아<br><strong style="color:var(--point-red);font-family:\'Jua\';font-size:1.3em;">' + accusedNickname + '</strong><br>님이 랜덤으로 지목되었어요!',
+                    null, true
+                );
+            });
+
+            // ---- 용의자 발표 ----
+            socket.on('game:accused', ({ accusedSocketId, accusedNickname, accusedEmoji, accusedPhoto }) => {
+                currentSuspectName  = accusedNickname;
+                currentSuspectEmoji = accusedPhoto || accusedEmoji;
+                document.getElementById('defenseName').innerText = accusedNickname;
+                const defEl = document.getElementById('defenseEmoji');
+                if (accusedPhoto) {
+                    defEl.innerHTML = `<img src="${accusedPhoto}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`;
+                } else {
+                    defEl.innerText  = accusedEmoji;
+                }
+                document.getElementById('agreeName').innerText = accusedNickname;
+            });
+
+            // ---- 부결 ----
+            socket.on('game:rejected', ({ rejectCount }) => {
+                const msg = rejectCount >= 2
+                    ? '2회 부결 누적! 다음 지목자는 무조건 라이어로 강제 확정됩니다.'
+                    : '1차 미동의 부결! 다시 발언 시간을 드립니다.';
+                // 2초 후 자동 닫히 (백엔드에서 game:phase DISCUSSING 판송 예정)
+                showCustomAlert(msg, null, true);
+            });
+
+            // ---- 확정 ----
+            socket.on('game:confirmed', () => {
+                // game:phase(KEYWORD)는 서버에서 별도로 오므로 팝업만 표시
+                showCustomAlert('<span style="color:var(--point-red);">라이어로 최종 판결났습니다.</span><br>역전 스테이지로 이동합니다.', null, true);
+            });
+
+            // ---- 최종 결과 수신 ----
+            socket.on('game:result', (data) => {
+                // PRD 차등 점수 반영
+                data.users.forEach(u => {
+                    if (u.socketId === socket.id) myInfo.score = u.score;
+                });
+
+                let rHtml = '';
+                if (data.isCorrect) {
+                    if (data.isAccusedLiar) {
+                        rHtml = `<span style="font-size:3em;">🎉</span><br><strong style="color:var(--point-beer); font-size:1.5em; font-family:'Jua';">라이어 대역전 승리!</strong><br><br>진짜 라이어의 완벽한 도주!<br>(라이어에게 +2잔 벌칙)`;
+                    } else {
+                        rHtml = `<span style="font-size:3em;">🎉</span><br><strong style="color:var(--point-beer); font-size:1.5em; font-family:'Jua';">라이어 대역전 승리!</strong><br><br>억울한 시민이었습니다!<br>(해당 시민 +1잔. 진짜 라이어는 무죄)`;
+                    }
+                } else {
+                    rHtml = `<span style="font-size:3em;">🎯</span><br><strong style="color:var(--point-blue); font-size:1.5em; font-family:'Jua';">시민 압승!</strong><br><br>제출어: [${data.submittedKeyword||'없음'}], 정답: [${data.citizenWord}]<br><br><strong style="color:var(--point-red);">용의자 생존(0점)!<br>나머지 시민 전원 축배 🍻 +1잔</strong>`;
+                }
+
+                showCustomAlert(rHtml, () => {
+                    renderSocketAvatars(data.users);
+                    switchView('view-room');
+                }, true);
+            });
+
+            socket.on('disconnect', () => {
+                console.warn('[소켓 끊김]');
+                showToast('서버와 연결이 끊어졌습니다');
+            });
+
+        } catch(e) {
+            console.warn('[소켓 초기화 실패 — Gate3 Mock 모드로 실행]', e);
+        }
+    });
+
+    // ---- 투표 리스트 렌더링 (소켓 유저 데이터 기반) ----
+    function _renderVoteList(users) {
+        const listDiv = document.getElementById('liarVoteList');
+        listDiv.innerHTML = '';
+        users.forEach(u => {
+            const dispContent = u.photoUrl
+                ? `<img src="${u.photoUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`
+                : u.emoji;
+            listDiv.innerHTML += `
+                <div class="vote-row" data-socket-id="${u.socketId}" onclick="selectSuspectSocket(this, '${u.socketId}', '${u.nickname}', '${u.photoUrl||u.emoji}')">
+                    <span style="display:flex; align-items:center; gap:14px;">
+                        <div style="font-size:1.5em; width:34px; height:34px; border-radius:50%; overflow:hidden; display:flex; justify-content:center; align-items:center; border:2px solid var(--ink); background:${getDrunkBgColor(u.score)}">${dispContent}</div>
+                        ${u.nickname}${u.socketId === socket?.id ? ' (나)' : ''}
+                    </span>
+                    <div class="custom-check"><svg class="check-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" style="opacity:0;"><polyline points="20 6 9 17 4 12"/></svg></div>
+                </div>`;
+        });
+    }
+
+    let selectedSuspectSocketId = null;
+    function selectSuspectSocket(el, socketId, name, emojiOrUrl) {
+        document.querySelectorAll('.vote-row').forEach(row => {
+            row.classList.remove('selected');
+            row.querySelector('.check-icon').style.opacity = '0';
+        });
+        el.classList.add('selected');
+        el.querySelector('.check-icon').style.opacity = '1';
+        selectedSuspectSocketId = socketId;
+        currentSuspectName  = name;
+        currentSuspectEmoji = emojiOrUrl;
+        document.getElementById('voteCompleteBtn').disabled = false;
+    }
+
+    // ---- 소켓 아바타 그리드 렌더링 ----
+    function renderSocketAvatars(users) {
+        const grid = document.getElementById('avatarGrid');
+        if (!grid) return;
+        const maxScore = Math.max(0, ...users.map(u => u.score));
+        grid.innerHTML = '';
+        users.forEach(u => {
+            const isMe = (u.socketId === socket?.id);
+            const isCrown = u.score > 0 && u.score === maxScore;
+            const imgHTML = u.photoUrl
+                ? `<img src="${u.photoUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`
+                : u.emoji;
+            const crownHtml = isCrown
+                ? `<div class="host-crown"><svg width="18" height="18" viewBox="0 0 24 24" fill="var(--point-red)" stroke="var(--ink)" stroke-width="3" stroke-linejoin="round"><path d="M2 22h20M2 20l4-12 4 6 2-10 2 10 4-6 4 12"/></svg></div>`
+                : '';
+            const label = u.nickname + (isMe ? (u.isHost ? ' (계산자)' : ' (나)') : '');
+            grid.innerHTML += `
+                <div class="wf-avatar-card ${isMe ? 'is-me' : ''}" id="${isMe ? 'avatar-me' : 'avatar-'+u.socketId}">
+                    ${crownHtml}
+                    <div class="wf-emoji" style="background-color:${getDrunkBgColor(u.score)}">${imgHTML}</div>
+                    <div class="avatar-name">${label}</div>
+                    <div class="avatar-score">🍻 ${u.score} 잔</div>
+                </div>`;
+        });
+        document.getElementById('roomCount').innerText = `${users.length}명`;
+    }
+
+    // ---- 방 목록 렌더링 (소켓 기반) ----
+    function renderRoomList(rooms) {
+        const container = document.getElementById('roomListContainer');
+        // Gate 3 하드코딩 목업 보존 후 소켓 방 목록을 앞에 삽입
+        const socketRoomsHtml = rooms.map(r => {
+            if (r.isFull) {
+                return `<div class="room-card-item" data-name="${r.name}" style="opacity:0.5;cursor:not-allowed;">
+                    <div><h4 style="color:var(--ink);font-family:'Jua';font-size:1.3em;">${r.isLocked?'🔒':'🍻'} ${r.name}</h4>
+                    <p style="font-size:0.9em;font-weight:bold;color:var(--point-red);margin-top:5px;">입장불가 (만석)</p></div>
+                    <div style="font-size:1em;font-weight:900;">${r.userCount} / 8명</div></div>`;
+            } else if (r.isLocked) {
+                return `<div class="room-card-item" data-name="${r.name}" style="cursor:pointer;" onclick="tryJoinSocketRoom('${r.id}','${r.name}')">
+                    <div><h4 style="color:var(--point-blue);font-family:'Jua';font-size:1.3em;">🔒 ${r.name}</h4>
+                    <p style="font-size:0.9em;font-weight:bold;color:var(--ink-light);margin-top:5px;">비밀방 (터치하여 호출)</p></div>
+                    <div style="font-size:1em;font-weight:900;">${r.userCount} / 8명</div></div>`;
+            } else {
+                return `<div class="room-card-item" data-name="${r.name}" style="cursor:pointer;" onclick="joinOpenRoom('${r.id}','${r.name}')">
+                    <div><h4 style="color:var(--ink);font-family:'Jua';font-size:1.3em;">🍻 ${r.name}</h4>
+                    <p style="font-size:0.9em;font-weight:bold;color:var(--ink-light);margin-top:5px;">개방 (터치하여 진입)</p></div>
+                    <div style="font-size:1em;font-weight:900;">${r.userCount} / 8명</div></div>`;
+            }
+        }).join('');
+        // 기존 하드코딩 목업은 맨 아래에 참고용으로 남김 (나중에 제거)
+        container.innerHTML = socketRoomsHtml || '<p style="color:var(--ink-light);text-align:center;padding:20px;font-family:\'Jua\';font-size:1.2em;">아직 열린 술자리가 없어요<br>먼저 테이블을 깔아보세요! 🍺</p>';
+    }
+
+    // 2-2: 실시간 방 목록 새로고침
+    function refreshRoomList() {
+        if (socket && socket.connected) {
+            socket.emit('room:list');
+            showToast('🔄 새로고침!');
+        }
+    }
+
+    function tryJoinSocketRoom(roomId, rName) {
+        currentClickRoomId = roomId;
+        currentClickRoomName = rName;
+        document.getElementById('pwRoomNameLabel').innerText = rName;
+        document.getElementById('modal-enter-password').classList.add('active');
+    }
+
+    // ---- submitVote 소켓 버전 오버라이드 ----
+    function submitVote() {
+        if (socket && socket.connected && selectedSuspectSocketId) {
+            socket.emit('game:vote', { targetSocketId: selectedSuspectSocketId });
+            const btn = document.getElementById('voteCompleteBtn');
+            btn.disabled = true;
+            btn.innerText = '투표 완료! 결과 취합 중...';
+        } else {
+            // Gate 3 폴백
+            if (!currentSuspectName) currentSuspectName = dummyAvatars[2]?.name || '용의자';
+            const btn = document.getElementById('voteCompleteBtn');
+            btn.disabled = true;
+            btn.innerText = '결과 취합 중...';
+            setTimeout(() => {
+                showCustomAlert(`<span style="color:var(--point-blue);">[${currentSuspectName}]</span><br>지목되었습니다!`, () => startDefensePhase(), true);
+            }, 1500);
+        }
+    }
+
+    // ---- handleAgree/handleDisagree 소켓 버전 오버라이드 ----
+    function handleAgree() {
+        if (socket && socket.connected) {
+            socket.emit('game:agree', { agreed: true });
+            showToast('동의 완료!');
+        } else {
+            showCustomAlert('<span style="color:var(--point-red);">라이어로 최종 판결났습니다.</span><br>역전 스테이지로 이동합니다.', () => startKeywordPhase(), true);
+        }
+    }
+
+    function handleDisagree() {
+        if (socket && socket.connected) {
+            socket.emit('game:agree', { agreed: false });
+            showToast('미동의 완료!');
+        } else {
+            failLoopCount++;
+            if (failLoopCount >= 2) {
+                isForceMode = true;
+                showCustomAlert('2회 부결 누적! 다음 지목자는 무조건 확정됩니다.', () => startLiarEngine());
+            } else {
+                showCustomAlert('1차 부결! 재투표합니다.', () => startLiarEngine());
+            }
+        }
+    }
+
+    // ---- finishLiarScoring 소켓 버전 오버라이드 ----
+    function finishLiarScoring() {
+        if (socket && socket.connected) {
+            const inputKey = document.getElementById('keywordSubmitInput').value.trim();
+            socket.emit('game:keyword', { keyword: inputKey });
+            document.getElementById('keywordSubmitInput').disabled = true;
+        } else {
+            // Gate 3 폴백 로컬 로직
+            clearInterval(activeTimer);
+            const inputKey = document.getElementById('keywordSubmitInput').value.trim();
+            const targetWord = '사과';
+            const isLiarWin = (inputKey === targetWord);
+            let rHtml = isLiarWin
+                ? `<span style="font-size:3em;">🎉</span><br><strong style="color:var(--point-beer); font-size:1.5em;">라이어 대역전 승리!</strong>`
+                : `<span style="font-size:3em;">🎯</span><br><strong style="color:var(--point-blue); font-size:1.5em;">시민 압승!</strong><br><br>정답: [${targetWord}]`;
+            showCustomAlert(rHtml, () => { renderRoomAvatars(isHostLevel); switchView('view-room'); }, true);
+        }
+    }
+
+    // ---- updateRoomControls ----
+    function updateRoomControls() {
+        document.getElementById('host-controls').style.display = isHostLevel ? 'flex' : 'none';
+        document.getElementById('guest-controls').style.display = isHostLevel ? 'none' : 'flex';
+        document.querySelectorAll('.host-only').forEach(btn => {
+            btn.style.display = isHostLevel ? 'flex' : 'none';
+        });
+    }
+
+    // ---- exitRoom 소켓 버전 오버라이드 ----
+    const _origExitRoom = typeof exitRoom === 'function' ? exitRoom : null;
+    function exitRoom() {
+        if (socket && socket.connected && currentRoomId) {
+            socket.emit('room:leave');
+            currentRoomId = null;
+        }
+        switchView('view-lobby');
+        socket && socket.emit('room:list');
+    }
+
+</script>
+</body>
+</html>
