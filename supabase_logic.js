@@ -24,6 +24,10 @@ const mockSocket = {
             await fetchRoomList();
             if (callback) callback();
         } 
+        else if (event === 'room:create') {
+            // 방 생성 로직 호출
+            await joinRoom(payload, callback);
+        }
         else if (event === 'room:join') {
             await joinRoom(payload, callback);
         }
@@ -92,16 +96,20 @@ let roomUsers = [];
 
 // ---- 방 목록 패치 로직 ----
 async function fetchRoomList() {
-    const { data: rooms, error } = await supabase.from('rooms').select('*, players(count)').eq('game_status', 'LOBBY');
+    // players(count) 집계 연산이 복잡할 수 있으므로 간단한 쿼리로 우선 수정
+    const { data: rooms, error } = await supabase.from('rooms').select('*, players(id)').eq('game_status', 'LOBBY');
+    
     if (!error && rooms) {
         const mapped = rooms.map(r => ({
             id: r.id,
             name: r.name,
             isLocked: false,
-            isFull: r.players[0].count >= r.max_players,
-            userCount: r.players[0].count
+            isFull: r.players ? r.players.length >= 8 : false,
+            userCount: r.players ? r.players.length : 0
         }));
         mockSocket._trigger('room:list', mapped);
+    } else {
+        console.error('[방 목록 패치 에러]', error);
     }
 }
 
@@ -109,13 +117,18 @@ async function fetchRoomList() {
 async function joinRoom(payload, callback) {
     let roomId = payload.roomId;
     if (!roomId) {
-        // 새 방 개설
+        // 새 방 개설 (room:create 대응)
+        console.log('[방 생성 시작]', payload);
         const { data, error } = await supabase.from('rooms').insert({
-            name: payload.password || '새 테이블', // 임시로 rName 받기
-            host_id: '00000000-0000-0000-0000-000000000000', // 추후 myId 반영
+            name: payload.name || '새 테이블', 
+            host_id: '00000000-0000-0000-0000-000000000000', 
             game_status: 'LOBBY'
         }).select();
-        if (error || !data) return callback({success: false, message: '방 개설 실패'});
+        
+        if (error || !data || data.length === 0) {
+            console.error('[방 생성 실패]', error);
+            return callback({success: false, message: '방 개설 실패: ' + (error?.message || 'DB 에러')});
+        }
         roomId = data[0].id;
     }
     
@@ -203,7 +216,7 @@ async function joinRoom(payload, callback) {
                 score: 0,
                 isHost: false
             });
-            callback({success: true, room: { id: roomId, name: payload.password||'새방' }, users: [], hostSocketId: null});
+            callback({success: true, room: { id: roomId, name: payload.name || payload.password || '새 테이블' }, users: [], hostSocketId: null});
         }
     });
 }
