@@ -219,18 +219,7 @@
 
         <!-- 2-1: 로비 방 목록 영역 scroll 확보 -->
         <div style="flex: 1; overflow-y: auto; min-height: 0;" id="roomListContainer">
-            <div class="room-card-item" data-name="불타는 찐친모임" style="opacity:0.5; cursor:not-allowed;">
-                <div><h4 style="color:var(--ink); font-family:'Jua'; font-size:1.3em;">🔥 불타는 찐친모임</h4><p style="font-size:0.9em; font-weight:bold; color:var(--point-red); margin-top:5px;">입장불가 (만석)</p></div>
-                <div style="font-size:1em; font-weight:900;">8 / 8명</div>
-            </div>
-            <div class="room-card-item" data-name="은비 생일파티" style="cursor:pointer;" onclick="tryJoinLockRoom('은비 생일파티')">
-                <div><h4 style="color:var(--point-blue); font-family:'Jua'; font-size:1.3em;">🔒 은비 생일파티</h4><p style="font-size:0.9em; font-weight:bold; color:var(--ink-light); margin-top:5px;">비밀방 (터치하여 호출)</p></div>
-                <div style="font-size:1em; font-weight:900;">3 / 8명</div>
-            </div>
-            <div class="room-card-item" data-name="열린 소주방" style="cursor:pointer;" onclick="joinRoomMock(false, '열린 소주방')">
-                <div><h4 style="color:var(--ink); font-family:'Jua'; font-size:1.3em;">🍻 열린 소주방</h4><p style="font-size:0.9em; font-weight:bold; color:var(--ink-light); margin-top:5px;">개방 (터치하여 진입)</p></div>
-                <div style="font-size:1em; font-weight:900;">5 / 8명</div>
-            </div>
+            <p style="color:var(--ink-light);text-align:center;padding:20px;font-family:'Jua';font-size:1.2em;">아직 열린 술자리가 없어요<br>먼저 테이블을 깔아보세요! 🍺</p>
         </div>
     </div>
 
@@ -485,13 +474,10 @@
     let isHostLevel = false;
 
     // 목업의 라이어는 고정해둠 (PRD 룰 증명용)
-    const trueLiarName = "고인물유저"; 
+    const trueLiarName = ""; 
 
-    let dummyAvatars = [
-        { name: "고인물유저", emoji: "😎", imageUrl: "https://i.pravatar.cc/150?u=42", isHost: true, score: 0 },
-        { name: "은비사랑", emoji: "🥴", imageUrl: "", isHost: false, score: 0 },
-        { name: "막내신입", emoji: "🤮", imageUrl: "", isHost: false, score: 0 },
-    ];
+    // 배포 환경이므로 더 이상 가짜 아바타를 주입하지 않음
+    let dummyAvatars = [];
 
     window.onload = () => { 
         // PRD 1. 회원가입: 로컬저장 연동
