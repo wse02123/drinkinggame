@@ -304,7 +304,7 @@
             
             <button class="btn-callbell" onclick="startGameHost()">게임 시작</button>
             <div style="margin-top:25px;">
-                <button class="btn-outline" style="width:100%; border-color:var(--ink-light); color:var(--ink-light); padding:12px;" onclick="finishRoom()">문 닫기 (술자리 종료)</button>
+                <button class="btn-outline" style="width:100%; border-color:var(--ink-light); color:var(--ink-light); padding:12px;" onclick="confirmFinishRoom()">술자리 종료</button>
             </div>
         </div>
 
@@ -492,6 +492,13 @@
         } else {
             generateRandomPName('signupNickname'); 
         }
+
+        // Fix 1: 로비에서 실시간 방 목록을 주기적으로 가져옵니다 (5초 간격)
+        setInterval(() => {
+            if (socket && socket.connected && document.getElementById('view-lobby').classList.contains('active')) {
+                socket.emit('room:list');
+            }
+        }, 5000);
     }
     
     const emojis = ['😎','🤮','🥴','🍺','🍻','🤡','🤓','👽','🤑','🫡','🥸','😈','🤪','🥳','😤','🫠','🤯','🫣'];
@@ -618,6 +625,7 @@
         myInfo.nickname = nn; 
         const eText = document.getElementById('currentEmoji').innerText;
         myInfo.emoji = eText ? eText : '😎';
+        myInfo.name = nn; // myInfo 의 name 과 nickname 통일
         
         localStorage.setItem('partyGameUser', JSON.stringify(myInfo));
 
@@ -752,8 +760,9 @@
             const imgHTML = u.imageUrl ? `<img src="${u.imageUrl}" style="width:100%;height:100%;object-fit:cover; border-radius:50%;">` : u.emoji;
             const crownHtml = isCrownTarget ? `<div class="host-crown"><svg width="18" height="18" viewBox="0 0 24 24" fill="var(--point-red)" stroke="var(--ink)" stroke-width="3" stroke-linejoin="round"><path d="M2 22h20M2 20l4-12 4 6 2-10 2 10 4-6 4 12"/></svg></div>` : '';
             
-            let label = u.name;
-            if(isMe) label += asHost ? ' (계산자)' : ' (나)';
+            let label = u.nickname || u.name;
+            if(isHostNode) label += ' (방장)';
+            if(isMe) label += ' (나)';
 
             grid.innerHTML += `
                 <div class="wf-avatar-card ${isMe ? 'is-me' : ''}" id="${isMe ? 'avatar-me' : ''}">
@@ -780,6 +789,10 @@
     }
 
     function startGameHost() {
+        if (document.getElementById('avatarGrid').children.length < 2) {
+            showCustomAlert('혼자서는 게임을 시작할 수 없습니다!<br>2명 이상 모여야 합니다.');
+            return;
+        }
         if (!socket || !socket.connected) {
             // Gate 3 폴백
             if (roomSelectedGameName === '라이어 게임') startLiarEngine();
@@ -1055,6 +1068,13 @@
             renderRoomAvatars(isHostLevel); 
             switchView('view-room'); 
         }, true);
+    }
+
+    // 술자리 종료 확인창
+    function confirmFinishRoom() {
+        if(confirm('오늘의 술자리를 종료할까요?')) {
+            finishRoom();
+        }
     }
 
     // 술자리 종료
@@ -1374,7 +1394,7 @@
                 <div class="vote-row" data-socket-id="${u.socketId}" onclick="selectSuspectSocket(this, '${u.socketId}', '${u.nickname}', '${u.photoUrl||u.emoji}')">
                     <span style="display:flex; align-items:center; gap:14px;">
                         <div style="font-size:1.5em; width:34px; height:34px; border-radius:50%; overflow:hidden; display:flex; justify-content:center; align-items:center; border:2px solid var(--ink); background:${getDrunkBgColor(u.score)}">${dispContent}</div>
-                        ${u.nickname}${u.socketId === socket?.id ? ' (나)' : ''}
+                        ${u.nickname}${u.isHost ? ' (방장)' : ''}${u.socketId === socket?.id ? ' (나)' : ''}
                     </span>
                     <div class="custom-check"><svg class="check-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" style="opacity:0;"><polyline points="20 6 9 17 4 12"/></svg></div>
                 </div>`;
