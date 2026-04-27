@@ -28,6 +28,9 @@ const mockSocket = {
             await fetchRoomList();
             if (callback) callback();
         } 
+        else if (event === 'room:create') {
+            await joinRoom(payload, callback);
+        }
         else if (event === 'room:join') {
             await joinRoom(payload, callback);
         }
@@ -96,16 +99,18 @@ let roomUsers = [];
 
 // ---- 방 목록 패치 로직 ----
 async function fetchRoomList() {
-    const { data: rooms, error } = await supabase.from('rooms').select('*, players(count)').eq('game_status', 'LOBBY');
+    const { data: rooms, error } = await supabaseClient.from('rooms').select('*, players(id)').eq('game_status', 'LOBBY');
     if (!error && rooms) {
         const mapped = rooms.map(r => ({
             id: r.id,
             name: r.name,
             isLocked: false,
-            isFull: r.players[0].count >= r.max_players,
-            userCount: r.players[0].count
+            isFull: r.players ? r.players.length >= 8 : false,
+            userCount: r.players ? r.players.length : 0
         }));
         mockSocket._trigger('room:list', mapped);
+    } else {
+        console.error('[방 목록 패치 에러]', error);
     }
 }
 
@@ -114,33 +119,42 @@ async function joinRoom(payload, callback) {
     let roomId = payload.roomId;
     if (!roomId) {
         // 새 방 개설
-        const { data, error } = await supabase.from('rooms').insert({
-            name: payload.password || '새 테이블', // 임시로 rName 받기
+        const { data, error } = await supabaseClient.from('rooms').insert({
+            name: payload.name || payload.password || '새 테이블', // 임시로 rName 받기
             host_id: '00000000-0000-0000-0000-000000000000', // 추후 myId 반영
             game_status: 'LOBBY'
         }).select();
-        if (error || !data) return callback({success: false, message: '방 개설 실패'});
+        
+        if (error || !data || data.length === 0) {
+            console.error('[방 생성 실패 디테일]', error);
+            alert('방 생성 실패! 사유: ' + (error?.message || '알 수 없는 DB 오류. (키값 혹은 RLS 확인 필요)'));
+            return callback({success: false, message: '방 개설 실패: ' + (error?.message || 'DB 에러')});
+        }
         roomId = data[0].id;
     }
     
     // 플레이어 insert
-    const { data: pData, error: pError } = await supabase.from('players').insert({
+    const { data: pData, error: pError } = await supabaseClient.from('players').insert({
         room_id: roomId,
         nickname: payload.user.nickname,
         emoji: payload.user.emoji,
         avatar_url: payload.user.photoUrl
     }).select();
     
-    if (pError) return callback({success: false, message: '방 입장 실패'});
+    if (pError) {
+        console.error('[플레이어 입장 실패]', pError);
+        alert('플레이어 입장 실패! 사유: ' + pError.message);
+        return callback({success: false, message: '방 입장 실패'});
+    }
     currentMyDbId = pData[0].id;
 
     // 만약 방장이라면 rooms의 host_id 업데이트
     if (!payload.roomId) {
-        await supabase.from('rooms').update({ host_id: currentMyDbId }).eq('id', roomId);
+        await supabaseClient.from('rooms').update({ host_id: currentMyDbId }).eq('id', roomId);
     }
 
     // 채널 구독
-    realtimeChannel = supabase.channel('room-' + roomId, {
+    realtimeChannel = supabaseClient.channel('room-' + roomId, {
         config: {
             presence: { key: mockSocket.id }
         }
@@ -207,14 +221,14 @@ async function joinRoom(payload, callback) {
                 score: 0,
                 isHost: false
             });
-            callback({success: true, room: { id: roomId, name: payload.password||'새방' }, users: [], hostSocketId: null});
+            callback({success: true, room: { id: roomId, name: payload.name || payload.password || '새방' }, users: [], hostSocketId: null});
         }
     });
 }
 
 async function leaveRoom() {
-    if (currentMyDbId) await supabase.from('players').delete().eq('id', currentMyDbId);
-    if (realtimeChannel) { await supabase.removeChannel(realtimeChannel); realtimeChannel = null; }
+    if (currentMyDbId) await supabaseClient.from('players').delete().eq('id', currentMyDbId);
+    if (realtimeChannel) { await supabaseClient.removeChannel(realtimeChannel); realtimeChannel = null; }
     window.hostGameEngine = null;
 }
 

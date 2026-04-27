@@ -1,35 +1,35 @@
-/**
- * LiarEngine — 라이어 게임 서버 사이드 상태머신
- * PRD 3.1 전체 룰 구현
+﻿/**
+ * LiarEngine ???쇱씠??寃뚯엫 ?쒕쾭 ?ъ씠???곹깭癒몄떊
+ * PRD 3.1 ?꾩껜 猷?援ы쁽
  *
  * State Flow:
- *   IDLE → DISCUSSING → VOTING → DEFENSE → AGREE → KEYWORD → RESULT
- *   (부결 시 AGREE → DISCUSSING 롤백, 최대 2회 부결 후 강제 KEYWORD)
+ *   IDLE ??DISCUSSING ??VOTING ??DEFENSE ??AGREE ??KEYWORD ??RESULT
+ *   (遺寃???AGREE ??DISCUSSING 濡ㅻ갚, 理쒕? 2??遺寃???媛뺤젣 KEYWORD)
  */
 
 // ============================================================
-// 제시어 데이터 (카테고리 → [시민 단어, 라이어 유사 단어] 쌍)
+// ?쒖떆???곗씠??(移댄뀒怨좊━ ??[?쒕? ?⑥뼱, ?쇱씠???좎궗 ?⑥뼱] ??
 // ============================================================
 const WORD_PAIRS = [
-    { category: '과일',   citizen: '수박',   liar: '참외'    },
-    { category: '과일',   citizen: '딸기',   liar: '방울토마토' },
-    { category: '동물',   citizen: '강아지', liar: '고양이'  },
-    { category: '동물',   citizen: '토끼',   liar: '햄스터'  },
-    { category: '음식',   citizen: '피자',   liar: '파스타'  },
-    { category: '음식',   citizen: '치킨',   liar: '피자'    },
-    { category: '음식',   citizen: '삼겹살', liar: '목살'    },
-    { category: '장소',   citizen: '도서관', liar: '서점'    },
-    { category: '장소',   citizen: '카페',   liar: '레스토랑'},
-    { category: '직업',   citizen: '의사',   liar: '간호사'  },
-    { category: '직업',   citizen: '선생님', liar: '교수'    },
-    { category: '스포츠', citizen: '축구',   liar: '풋살'    },
-    { category: '스포츠', citizen: '농구',   liar: '핸드볼'  },
-    { category: '연예인', citizen: 'BTS',    liar: 'EXO'     },
-    { category: '영화',   citizen: '어벤저스', liar: '아이언맨' },
+    { category: '怨쇱씪',   citizen: '?섎컯',   liar: '李몄쇅'    },
+    { category: '怨쇱씪',   citizen: '?멸린',   liar: '諛⑹슱?좊쭏?? },
+    { category: '?숇Ъ',   citizen: '媛뺤븘吏', liar: '怨좎뼇??  },
+    { category: '?숇Ъ',   citizen: '?좊겮',   liar: '?꾩뒪??  },
+    { category: '?뚯떇',   citizen: '?쇱옄',   liar: '?뚯뒪?'  },
+    { category: '?뚯떇',   citizen: '移섑궓',   liar: '?쇱옄'    },
+    { category: '?뚯떇',   citizen: '?쇨껸??, liar: '紐⑹궡'    },
+    { category: '?μ냼',   citizen: '?꾩꽌愿', liar: '?쒖젏'    },
+    { category: '?μ냼',   citizen: '移댄럹',   liar: '?덉뒪?좊옉'},
+    { category: '吏곸뾽',   citizen: '?섏궗',   liar: '媛꾪샇??  },
+    { category: '吏곸뾽',   citizen: '?좎깮??, liar: '援먯닔'    },
+    { category: '?ㅽ룷痢?, citizen: '異뺢뎄',   liar: '?뗭궡'    },
+    { category: '?ㅽ룷痢?, citizen: '?띻뎄',   liar: '?몃뱶蹂?  },
+    { category: '?곗삁??, citizen: 'BTS',    liar: 'EXO'     },
+    { category: '?곹솕',   citizen: '?대깽???, liar: '?꾩씠?몃㎤' },
 ];
 
 // ============================================================
-// 게임 상태 상수
+// 寃뚯엫 ?곹깭 ?곸닔
 // ============================================================
 const PHASE = {
     IDLE:       'IDLE',
@@ -41,7 +41,7 @@ const PHASE = {
     RESULT:     'RESULT'
 };
 
-// PRD: 타이머 공식
+// PRD: ??대㉧ 怨듭떇
 const DISCUSS_BASE_SEC = 60;
 const DISCUSS_PER_USER_SEC = 30;
 const VOTE_SEC = 20;
@@ -50,46 +50,43 @@ const AGREE_SEC = 20;
 const KEYWORD_SEC = 20;
 
 // ============================================================
-// LiarEngine 클래스
-// ============================================================
+// LiarEngine ?대옒??// ============================================================
 class LiarEngine {
     constructor(room, io) {
-        this.room       = room;      // 방 객체 참조
-        this.io         = io;        // socket.io 서버 인스턴스
+        this.room       = room;      // 諛?媛앹껜 李몄“
+        this.io         = io;        // socket.io ?쒕쾭 ?몄뒪?댁뒪
         this.roomId     = room.id;
 
-        // 게임 상태
+        // 寃뚯엫 ?곹깭
         this.phase      = PHASE.IDLE;
         this.wordPair   = null;      // { category, citizen, liar }
-        this.liarSocketId = null;    // 라이어 소켓 ID
+        this.liarSocketId = null;    // ?쇱씠???뚯폆 ID
 
-        // 투표
-        this.votes      = new Map(); // voterId → targetSocketId
-        this.accusedSocketId = null; // 지목된 용의자
+        // ?ы몴
+        this.votes      = new Map(); // voterId ??targetSocketId
+        this.accusedSocketId = null; // 吏紐⑸맂 ?⑹쓽??
+        // ?숈쓽/誘몃룞??        this.agrees     = new Map(); // voterId ??boolean
+        this.rejectCount = 0;        // PRD: 遺寃??꾩쟻 ?잛닔 (理쒕? 2)
 
-        // 동의/미동의
-        this.agrees     = new Map(); // voterId → boolean
-        this.rejectCount = 0;        // PRD: 부결 누적 횟수 (최대 2)
-
-        // 타이머
+        // ??대㉧
         this._timerInterval = null;
         this._timerSec = 0;
     }
 
     // ----------------------------------------------------------
-    // 게임 시작
+    // 寃뚯엫 ?쒖옉
     // ----------------------------------------------------------
     start() {
-        // 제시어 무작위 선택
+        // ?쒖떆??臾댁옉???좏깮
         this.wordPair = WORD_PAIRS[Math.floor(Math.random() * WORD_PAIRS.length)];
 
-        // 라이어 무작위 선정
+        // ?쇱씠??臾댁옉???좎젙
         const userIds = Array.from(this.room.users.keys());
         this.liarSocketId = userIds[Math.floor(Math.random() * userIds.length)];
 
-        console.log(`[게임 시작] ${this.roomId} | 제시어: ${this.wordPair.citizen} | 라이어: ${this.liarSocketId}`);
+        console.log(`[寃뚯엫 ?쒖옉] ${this.roomId} | ?쒖떆?? ${this.wordPair.citizen} | ?쇱씠?? ${this.liarSocketId}`);
 
-        // PRD: 개별 단어 전송 (역할 블라인드)
+        // PRD: 媛쒕퀎 ?⑥뼱 ?꾩넚 (??븷 釉붾씪?몃뱶)
         for (const [sid, _user] of this.room.users) {
             const isLiar  = sid === this.liarSocketId;
             const word    = isLiar ? this.wordPair.liar : this.wordPair.citizen;
@@ -100,18 +97,17 @@ class LiarEngine {
             });
         }
 
-        // 토론 페이즈 시작
+        // ?좊줎 ?섏씠利??쒖옉
         this._startDiscussing();
     }
 
     // ----------------------------------------------------------
-    // Phase: DISCUSSING (토론)
+    // Phase: DISCUSSING (?좊줎)
     // ----------------------------------------------------------
     _startDiscussing() {
         this.phase  = PHASE.DISCUSSING;
         const n     = this.room.users.size;
-        // PRD: (N × 30) + 60초
-        const totalSec = (n * DISCUSS_PER_USER_SEC) + DISCUSS_BASE_SEC;
+        // PRD: (N 횞 30) + 60珥?        const totalSec = (n * DISCUSS_PER_USER_SEC) + DISCUSS_BASE_SEC;
 
         this._broadcast('game:phase', {
             phase: PHASE.DISCUSSING,
@@ -123,7 +119,7 @@ class LiarEngine {
     }
 
     // ----------------------------------------------------------
-    // Phase: VOTING (지목 투표)
+    // Phase: VOTING (吏紐??ы몴)
     // ----------------------------------------------------------
     _startVoting() {
         this.phase = PHASE.VOTING;
@@ -143,24 +139,24 @@ class LiarEngine {
         this._startTimer(VOTE_SEC, () => this._resolveVoting());
     }
 
-    /** 투표 수신 */
+    /** ?ы몴 ?섏떊 */
     receiveVote(voterSocketId, targetSocketId) {
         if (this.phase !== PHASE.VOTING) return;
-        if (voterSocketId === targetSocketId) return; // 본인 투표 불가
+        if (voterSocketId === targetSocketId) return; // 蹂몄씤 ?ы몴 遺덇?
 
         this.votes.set(voterSocketId, targetSocketId);
         this._broadcast('game:vote_count', { voteCount: this.votes.size });
 
-        // 전원 투표 완료 시 즉시 집계
+        // ?꾩썝 ?ы몴 ?꾨즺 ??利됱떆 吏묎퀎
         if (this.votes.size >= this.room.users.size) {
             this._clearTimer();
             this._resolveVoting();
         }
     }
 
-    /** 투표 집계 */
+    /** ?ы몴 吏묎퀎 */
     _resolveVoting() {
-        // [E-1] 아무도 투표 안 했을 때 → 랜덤 지목 + 특별 알림
+        // [E-1] ?꾨Т???ы몴 ???덉쓣 ?????쒕뜡 吏紐?+ ?밸퀎 ?뚮┝
         if (this.votes.size === 0) {
             const userIds = Array.from(this.room.users.keys());
             this.accusedSocketId = userIds[Math.floor(Math.random() * userIds.length)];
@@ -169,17 +165,16 @@ class LiarEngine {
             this._broadcast('game:accused_random', {
                 accusedSocketId: this.accusedSocketId,
                 accusedNickname: accusedUser?.nickname || '???',
-                accusedEmoji:    accusedUser?.emoji    || '😶',
+                accusedEmoji:    accusedUser?.emoji    || '?샄',
                 accusedPhoto:    accusedUser?.photoUrl || null
             });
-            // accused 정보도 같이 동기화
-            this._broadcast('game:accused', {
+            // accused ?뺣낫??媛숈씠 ?숆린??            this._broadcast('game:accused', {
                 accusedSocketId: this.accusedSocketId,
                 accusedNickname: accusedUser?.nickname || '???',
-                accusedEmoji:    accusedUser?.emoji    || '😶',
+                accusedEmoji:    accusedUser?.emoji    || '?샄',
                 accusedPhoto:    accusedUser?.photoUrl || null
             });
-            console.log(`[랜덤 지목] ${this.roomId} → ${accusedUser?.nickname}`);
+            console.log(`[?쒕뜡 吏紐? ${this.roomId} ??${accusedUser?.nickname}`);
 
             if (this.rejectCount >= 2) {
                 setTimeout(() => this._startKeyword(), 2500);
@@ -189,13 +184,13 @@ class LiarEngine {
             return;
         }
 
-        // 득표 수 계산
-        const tally = new Map(); // targetSocketId → count
+        // ?앺몴 ??怨꾩궛
+        const tally = new Map(); // targetSocketId ??count
         for (const targetId of this.votes.values()) {
             tally.set(targetId, (tally.get(targetId) || 0) + 1);
         }
 
-        // 최다 득표자 선정 (동점 시 무작위)
+        // 理쒕떎 ?앺몴???좎젙 (?숈젏 ??臾댁옉??
         let maxVotes = 0;
         let suspects = [];
         for (const [sid, count] of tally) {
@@ -209,12 +204,11 @@ class LiarEngine {
         this._broadcast('game:accused', {
             accusedSocketId: this.accusedSocketId,
             accusedNickname: accusedUser?.nickname || '???',
-            accusedEmoji:    accusedUser?.emoji    || '😶',
+            accusedEmoji:    accusedUser?.emoji    || '?샄',
             accusedPhoto:    accusedUser?.photoUrl || null
         });
 
-        // PRD: 부결 2회 누적 → 변론/동의 없이 바로 키워드
-        if (this.rejectCount >= 2) {
+        // PRD: 遺寃?2???꾩쟻 ??蹂濡??숈쓽 ?놁씠 諛붾줈 ?ㅼ썙??        if (this.rejectCount >= 2) {
             setTimeout(() => this._startKeyword(), 1500);
         } else {
             setTimeout(() => this._startDefense(), 1500);
@@ -222,7 +216,7 @@ class LiarEngine {
     }
 
     // ----------------------------------------------------------
-    // Phase: DEFENSE (최후 변론 30초)
+    // Phase: DEFENSE (理쒗썑 蹂濡?30珥?
     // ----------------------------------------------------------
     _startDefense() {
         this.phase = PHASE.DEFENSE;
@@ -236,7 +230,7 @@ class LiarEngine {
     }
 
     // ----------------------------------------------------------
-    // Phase: AGREE (동의/미동의 투표)
+    // Phase: AGREE (?숈쓽/誘몃룞???ы몴)
     // ----------------------------------------------------------
     _startAgree() {
         this.phase = PHASE.AGREE;
@@ -251,14 +245,14 @@ class LiarEngine {
         this._startTimer(AGREE_SEC, () => this._resolveAgree());
     }
 
-    /** 동의/미동의 수신 */
+    /** ?숈쓽/誘몃룞???섏떊 */
     receiveAgree(voterSocketId, agreed) {
         if (this.phase !== PHASE.AGREE) return;
-        if (voterSocketId === this.accusedSocketId) return; // 용의자 본인 제외
+        if (voterSocketId === this.accusedSocketId) return; // ?⑹쓽??蹂몄씤 ?쒖쇅
 
         this.agrees.set(voterSocketId, agreed);
 
-        // 전원 완료 시 즉시 집계
+        // ?꾩썝 ?꾨즺 ??利됱떆 吏묎퀎
         const eligibleCount = this.room.users.size - 1;
         if (this.agrees.size >= eligibleCount) {
             this._clearTimer();
@@ -266,17 +260,17 @@ class LiarEngine {
         }
     }
 
-    /** 동의 집계 */
+    /** ?숈쓽 吏묎퀎 */
     _resolveAgree() {
-        // [E-2] 실제 투표한 인원만 기준으로 과반수 계산 (미투표자 제외)
+        // [E-2] ?ㅼ젣 ?ы몴???몄썝留?湲곗??쇰줈 怨쇰컲??怨꾩궛 (誘명닾?쒖옄 ?쒖쇅)
         const actualVoters  = this.agrees.size;
         const agreeCount    = Array.from(this.agrees.values()).filter(v => v).length;
         const disagreeCount = actualVoters - agreeCount;
 
-        // 아무도 투표 안 했거나 동점인 경우: 동의 처리 (기본값)
+        // ?꾨Т???ы몴 ???덇굅???숈젏??寃쎌슦: ?숈쓽 泥섎━ (湲곕낯媛?
         let majority;
         if (actualVoters === 0) {
-            // 아무도 투표 안 하면 과반수 동의로 간주
+            // ?꾨Т???ы몴 ???섎㈃ 怨쇰컲???숈쓽濡?媛꾩＜
             this._broadcast('game:confirmed', { accusedSocketId: this.accusedSocketId });
             setTimeout(() => this._startKeyword(), 1500);
             return;
@@ -284,34 +278,34 @@ class LiarEngine {
         majority = Math.floor(actualVoters / 2) + 1;
 
         if (disagreeCount >= majority) {
-            // PRD: 미동의 과반수 → 부결 롤백
+            // PRD: 誘몃룞??怨쇰컲????遺寃?濡ㅻ갚
             this.rejectCount++;
             this._broadcast('game:rejected', { rejectCount: this.rejectCount });
             setTimeout(() => {
                 this._startDiscussing();
             }, 2000);
         } else {
-            // 동의 과반수 → 키워드 단계
+            // ?숈쓽 怨쇰컲?????ㅼ썙???④퀎
             this._broadcast('game:confirmed', { accusedSocketId: this.accusedSocketId });
             setTimeout(() => this._startKeyword(), 1500);
         }
     }
 
     // ----------------------------------------------------------
-    // Phase: KEYWORD (주관식 20초)
+    // Phase: KEYWORD (二쇨???20珥?
     // ----------------------------------------------------------
     _startKeyword() {
         this.phase = PHASE.KEYWORD;
 
-        // 용의자에게 폼 표시
+        // ?⑹쓽?먯뿉寃????쒖떆
         this.io.to(this.accusedSocketId).emit('game:phase', {
             phase: PHASE.KEYWORD,
             totalSec: KEYWORD_SEC,
             isAccused: true,
-            citizenWord: this.wordPair.citizen // 라이어가 맞혀야 할 정답
+            citizenWord: this.wordPair.citizen // ?쇱씠?닿? 留욏??????뺣떟
         });
 
-        // 나머지는 대기 화면
+        // ?섎㉧吏???湲??붾㈃
         for (const [sid] of this.room.users) {
             if (sid !== this.accusedSocketId) {
                 this.io.to(sid).emit('game:phase', {
@@ -323,12 +317,12 @@ class LiarEngine {
         }
 
         this._startTimer(KEYWORD_SEC, () => {
-            // 시간 초과 → 틀린 것으로 처리
+            // ?쒓컙 珥덇낵 ???由?寃껋쑝濡?泥섎━
             this._resolveResult('');
         });
     }
 
-    /** 키워드 제출 수신 */
+    /** ?ㅼ썙???쒖텧 ?섏떊 */
     receiveKeyword(senderSocketId, keyword) {
         if (this.phase !== PHASE.KEYWORD) return;
         if (senderSocketId !== this.accusedSocketId) return;
@@ -338,7 +332,7 @@ class LiarEngine {
     }
 
     // ----------------------------------------------------------
-    // Phase: RESULT (결과 산정)
+    // Phase: RESULT (寃곌낵 ?곗젙)
     // ----------------------------------------------------------
     _resolveResult(submittedKeyword) {
         this.phase = PHASE.RESULT;
@@ -348,27 +342,22 @@ class LiarEngine {
         const isAccusedLiar  = this.accusedSocketId === this.liarSocketId;
 
         /**
-         * PRD 점수 산정 공식:
-         * [라이어 승리 = 선정자가 정답을 맞춘 경우]
-         *   - 선정자가 진짜 라이어 → 라이어 +2점
-         *   - 선정자가 억울한 시민 → 그 시민 +1점
-         *   - 나머지 +0점
-         *
-         * [시민 승리 = 선정자가 정답을 틀린 경우]
-         *   - 선정자 0점
-         *   - 나머지 시민 전원 +1점
-         */
-        const scoreChanges = {}; // socketId → delta
+         * PRD ?먯닔 ?곗젙 怨듭떇:
+         * [?쇱씠???밸━ = ?좎젙?먭? ?뺣떟??留욎텣 寃쎌슦]
+         *   - ?좎젙?먭? 吏꾩쭨 ?쇱씠?????쇱씠??+2??         *   - ?좎젙?먭? ?듭슱???쒕? ??洹??쒕? +1??         *   - ?섎㉧吏 +0??         *
+         * [?쒕? ?밸━ = ?좎젙?먭? ?뺣떟???由?寃쎌슦]
+         *   - ?좎젙??0??         *   - ?섎㉧吏 ?쒕? ?꾩썝 +1??         */
+        const scoreChanges = {}; // socketId ??delta
 
         if (isCorrect) {
-            // 라이어 승리
+            // ?쇱씠???밸━
             if (isAccusedLiar) {
                 scoreChanges[this.accusedSocketId] = 2;
             } else {
                 scoreChanges[this.accusedSocketId] = 1;
             }
         } else {
-            // 시민 승리
+            // ?쒕? ?밸━
             for (const [sid] of this.room.users) {
                 if (sid !== this.accusedSocketId) {
                     scoreChanges[sid] = 1;
@@ -376,12 +365,12 @@ class LiarEngine {
             }
         }
 
-        // 점수 적용
+        // ?먯닔 ?곸슜
         for (const [sid, user] of this.room.users) {
             user.score += (scoreChanges[sid] || 0);
         }
 
-        // 결과 브로드캐스트
+        // 寃곌낵 釉뚮줈?쒖틦?ㅽ듃
         const usersPayload = Array.from(this.room.users.values()).map(u => ({
             socketId: u.socketId,
             nickname: u.nickname,
@@ -405,12 +394,11 @@ class LiarEngine {
             victoryTeam:     isCorrect ? 'LIAR' : 'CITIZEN'
         });
 
-        // 게임 종료 — 방을 IDLE 상태로
-        this.room.game = null;
+        // 寃뚯엫 醫낅즺 ??諛⑹쓣 IDLE ?곹깭濡?        this.room.game = null;
     }
 
     // ----------------------------------------------------------
-    // 유틸
+    // ?좏떥
     // ----------------------------------------------------------
     _broadcast(event, data) {
         this.io.to(this.roomId).emit(event, data);
@@ -440,10 +428,11 @@ class LiarEngine {
         }
     }
 
-    /** 방 삭제 시 정리 */
+    /** 諛???젣 ???뺣━ */
     destroy() {
         this._clearTimer();
     }
 }
 
 module.exports = { LiarEngine, PHASE };
+

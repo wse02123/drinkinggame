@@ -24,10 +24,6 @@ const mockSocket = {
             await fetchRoomList();
             if (callback) callback();
         } 
-        else if (event === 'room:create') {
-            // 방 생성 로직 호출
-            await joinRoom(payload, callback);
-        }
         else if (event === 'room:join') {
             await joinRoom(payload, callback);
         }
@@ -96,20 +92,16 @@ let roomUsers = [];
 
 // ---- 방 목록 패치 로직 ----
 async function fetchRoomList() {
-    // players(count) 집계 연산이 복잡할 수 있으므로 간단한 쿼리로 우선 수정
-    const { data: rooms, error } = await supabaseClient.from('rooms').select('*, players(id)').eq('game_status', 'LOBBY');
-    
+    const { data: rooms, error } = await supabase.from('rooms').select('*, players(count)').eq('game_status', 'LOBBY');
     if (!error && rooms) {
         const mapped = rooms.map(r => ({
             id: r.id,
             name: r.name,
             isLocked: false,
-            isFull: r.players ? r.players.length >= 8 : false,
-            userCount: r.players ? r.players.length : 0
+            isFull: r.players[0].count >= r.max_players,
+            userCount: r.players[0].count
         }));
         mockSocket._trigger('room:list', mapped);
-    } else {
-        console.error('[방 목록 패치 에러]', error);
     }
 }
 
@@ -117,46 +109,34 @@ async function fetchRoomList() {
 async function joinRoom(payload, callback) {
     let roomId = payload.roomId;
     if (!roomId) {
-        // 새 방 개설 (room:create 대응)
-        console.log('[방 생성 시작]', payload);
-        const { data, error } = await supabaseClient.from('rooms').insert({
-            name: payload.name || '새 테이블', 
-            host_id: '00000000-0000-0000-0000-000000000000', 
+        // 새 방 개설
+        const { data, error } = await supabase.from('rooms').insert({
+            name: payload.password || '새 테이블', // 임시로 rName 받기
+            host_id: '00000000-0000-0000-0000-000000000000', // 추후 myId 반영
             game_status: 'LOBBY'
         }).select();
-        
-        if (error || !data || data.length === 0) {
-            console.error('[방 생성 실패 디테일]', error);
-            alert('방 생성 실패! 사유: ' + (error?.message || '알 수 없는 DB 오류. (키값 혹은 RLS 확인 필요)'));
-            return callback({success: false, message: '방 개설 실패: ' + (error?.message || 'DB 에러')});
-        }
+        if (error || !data) return callback({success: false, message: '방 개설 실패'});
         roomId = data[0].id;
-        console.log('[방 생성 성공] ID:', roomId);
     }
     
     // 플레이어 insert
-    const { data: pData, error: pError } = await supabaseClient.from('players').insert({
+    const { data: pData, error: pError } = await supabase.from('players').insert({
         room_id: roomId,
         nickname: payload.user.nickname,
         emoji: payload.user.emoji,
         avatar_url: payload.user.photoUrl
     }).select();
     
-    if (pError) {
-        console.error('[플레이어 입장 실패]', pError);
-        alert('플레이어 입장 실패! 사유: ' + pError.message);
-        return callback({success: false, message: '방 입장 실패'});
-    }
+    if (pError) return callback({success: false, message: '방 입장 실패'});
     currentMyDbId = pData[0].id;
 
-    // 만약 방장이라면 rooms의 host_id 업데이트 (UUID 형식 준수)
+    // 만약 방장이라면 rooms의 host_id 업데이트
     if (!payload.roomId) {
-        const { error: uError } = await supabaseClient.from('rooms').update({ host_id: currentMyDbId }).eq('id', roomId);
-        if (uError) console.error('[방장 위임 실패]', uError);
+        await supabase.from('rooms').update({ host_id: currentMyDbId }).eq('id', roomId);
     }
 
     // 채널 구독
-    realtimeChannel = supabaseClient.channel('room-' + roomId, {
+    realtimeChannel = supabase.channel('room-' + roomId, {
         config: {
             presence: { key: mockSocket.id }
         }
@@ -223,456 +203,466 @@ async function joinRoom(payload, callback) {
                 score: 0,
                 isHost: false
             });
-            callback({success: true, room: { id: roomId, name: payload.name || payload.password || '새 테이블' }, users: [], hostSocketId: null});
+            callback({success: true, room: { id: roomId, name: payload.password||'새방' }, users: [], hostSocketId: null});
         }
     });
 }
 
 async function leaveRoom() {
-    if (currentMyDbId) await supabaseClient.from('players').delete().eq('id', currentMyDbId);
-    if (realtimeChannel) { await supabaseClient.removeChannel(realtimeChannel); realtimeChannel = null; }
+    if (currentMyDbId) await supabase.from('players').delete().eq('id', currentMyDbId);
+    if (realtimeChannel) { await supabase.removeChannel(realtimeChannel); realtimeChannel = null; }
     window.hostGameEngine = null;
 }
 
 // ==========================================
 // 엔진 코드 임베딩
 // ==========================================
-��/ * * 
-   *   L i a r E n g i n e   ? ? ? �� �? ? �[����  ? �ĭ�  ? J �? ? ? ��m�Rv����
-   *   P R D   3 . 1   ? ��ܮ  7s? �cK}�
-   * 
-   *   S t a t e   F l o w : 
-   *       I D L E   ? ? D I S C U S S I N G   ? ? V O T I N G   ? ? D E F E N S E   ? ? A G R E E   ? ? K E Y W O R D   ? ? R E S U L T 
-   *       ( z�� �[? ? ? A G R E E   ? ? D I S C U S S I N G   �o{1�,   ����?   2 ? ? z�� �[? ? ? �Z��#�  K E Y W O R D ) 
-   * / 
- 
- / /   = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = 
- / /   ? �Ć�? ? ? ׬ �? ? ( �y��(`��%  ? ? [ ? ��?   ? e$1�,   ? �� �? ? ? �ȗ�  ? e$1�]   ? ? 
- / /   = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = 
- c o n s t   W O R D _ P A I R S   =   [ 
-         {   c a t e g o r y :   ' (`��*�' ,       c i t i z e n :   ' ? ���' ,       l i a r :   ' ������'         } , 
-         {   c a t e g o r y :   ' (`��*�' ,       c i t i z e n :   ' ? x���' ,       l i a r :   ' ۊy$��? ��O�? ?   } , 
-         {   c a t e g o r y :   ' ? �*' ,       c i t i z e n :   ' �Z������ ' ,   l i a r :   ' (`���? ?     } , 
-         {   c a t e g o r y :   ' ? �*' ,       c i t i z e n :   ' ? �Ȯ�' ,       l i a r :   ' ? ����? ?     } , 
-         {   c a t e g o r y :   ' ? ����' ,       c i t i z e n :   ' ? ���' ,       l i a r :   ' ? ����? � '     } , 
-         {   c a t e g o r y :   ' ? ����' ,       c i t i z e n :   ' �y���' ,       l i a r :   ' ? ���'         } , 
-         {   c a t e g o r y :   ' ? ����' ,       c i t i z e n :   ' ? ����? ? ,   l i a r :   ' ��y$��'         } , 
-         {   c a t e g o r y :   ' ? ���' ,       c i t i z e n :   ' ? ��L�?a� ' ,   l i a r :   ' ? ���'         } , 
-         {   c a t e g o r y :   ' ? ���' ,       c i t i z e n :   ' �y���' ,       l i a r :   ' ? I���? ��	�' } , 
-         {   c a t e g o r y :   ' ������' ,       c i t i z e n :   ' ? ���' ,       l i a r :   ' �Z����? ?     } , 
-         {   c a t e g o r y :   ' ������' ,       c i t i z e n :   ' ? ��n�? ? ,   l i a r :   ' �c/�Բ'         } , 
-         {   c a t e g o r y :   ' ? }1����? ,   c i t i z e n :   ' pu����' ,       l i a r :   ' ? ����'         } , 
-         {   c a t e g o r y :   ' ? }1����? ,   c i t i z e n :   ' ? {���' ,       l i a r :   ' ? ��v�B�?     } , 
-         {   c a t e g o r y :   ' ? ׬��? ? ,   c i t i z e n :   ' B T S ' ,         l i a r :   ' E X O '           } , 
-         {   c a t e g o r y :   ' ? ����' ,       c i t i z e n :   ' ?  �}�? � ? ? ,   l i a r :   ' ? �� �? ���3'   } , 
- ] ; 
- 
- / /   = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = 
- / /   �[����  ? ��m�  ? ��Բ
- / /   = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = 
- c o n s t   P H A S E   =   { 
-         I D L E :               ' I D L E ' , 
-         D I S C U S S I N G :   ' D I S C U S S I N G ' , 
-         V O T I N G :           ' V O T I N G ' , 
-         D E F E N S E :         ' D E F E N S E ' , 
-         A G R E E :             ' A G R E E ' , 
-         K E Y W O R D :         ' K E Y W O R D ' , 
-         R E S U L T :           ' R E S U L T ' 
- } ; 
- 
- / /   P R D :   ? � ?  �g2  (`����
- c o n s t   D I S C U S S _ B A S E _ S E C   =   6 0 ; 
- c o n s t   D I S C U S S _ P E R _ U S E R _ S E C   =   3 0 ; 
- c o n s t   V O T E _ S E C   =   2 0 ; 
- c o n s t   D E F E N S E _ S E C   =   3 0 ; 
- c o n s t   A G R E E _ S E C   =   2 0 ; 
- c o n s t   K E Y W O R D _ S E C   =   2 0 ; 
- 
- / /   = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = 
- / /   L i a r E n g i n e   ?  ��? ? / /   = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = 
- c l a s s   L i a r E n g i n e   { 
-         c o n s t r u c t o r ( r o o m ,   i o )   { 
-                 t h i s . r o o m               =   r o o m ;             / /   ۊ? �Zy�ܮ  ���� 
-                 t h i s . i o                   =   i o ;                 / /   s o c k e t . i o   ? �ĭ�  ? ����? ���
-                 t h i s . r o o m I d           =   r o o m . i d ; 
- 
-                 / /   �[����  ? ��m�
-                 t h i s . p h a s e             =   P H A S E . I D L E ; 
-                 t h i s . w o r d P a i r       =   n u l l ;             / /   {   c a t e g o r y ,   c i t i z e n ,   l i a r   } 
-                 t h i s . l i a r S o c k e t I d   =   n u l l ;         / /   ? �� �? ? ? ����  I D 
- 
-                 / /   ? K��
-                 t h i s . v o t e s             =   n e w   M a p ( ) ;   / /   v o t e r I d   ? ? t a r g e t S o c k e t I d 
-                 t h i s . a c c u s e d S o c k e t I d   =   n u l l ;   / /   ��� ��x$¹  ? y$��? ? 
-                 / /   ? ���/ ����޸? ?                 t h i s . a g r e e s           =   n e w   M a p ( ) ;   / /   v o t e r I d   ? ? b o o l e a n 
-                 t h i s . r e j e c t C o u n t   =   0 ;                 / /   P R D :   z�� �[? ? ����  ? ��Բ  ( ����?   2 ) 
- 
-                 / /   ? � ?  �g2
-                 t h i s . _ t i m e r I n t e r v a l   =   n u l l ; 
-                 t h i s . _ t i m e r S e c   =   0 ; 
-         } 
- 
-         / /   - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
-         / /   �[����  ? ��	�
-         / /   - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
-         s t a r t ( )   { 
-                 / /   ? �Ć�? ? ���	�? ? ? ��n�
-                 t h i s . w o r d P a i r   =   W O R D _ P A I R S [ M a t h . f l o o r ( M a t h . r a n d o m ( )   *   W O R D _ P A I R S . l e n g t h ) ] ; 
- 
-                 / /   ? �� �? ? ���	�? ? ? ���
-                 c o n s t   u s e r I d s   =   A r r a y . f r o m ( t h i s . r o o m . u s e r s . k e y s ( ) ) ; 
-                 t h i s . l i a r S o c k e t I d   =   u s e r I d s [ M a t h . f l o o r ( M a t h . r a n d o m ( )   *   u s e r I d s . l e n g t h ) ] ; 
- 
-                 c o n s o l e . l o g ( ` [ �[����  ? ��	�]   $ { t h i s . r o o m I d }   |   ? �Ć�? ?   $ { t h i s . w o r d P a i r . c i t i z e n }   |   ? �� �? ?   $ { t h i s . l i a r S o c k e t I d } ` ) ; 
- 
-                 / /   P R D :   �Z���  ? e$1�  ? ���  ( ? ? 7�  ɑ��*�? ��v�) 
-                 f o r   ( c o n s t   [ s i d ,   _ u s e r ]   o f   t h i s . r o o m . u s e r s )   { 
-                         c o n s t   i s L i a r     =   s i d   = = =   t h i s . l i a r S o c k e t I d ; 
-                         c o n s t   w o r d         =   i s L i a r   ?   t h i s . w o r d P a i r . l i a r   :   t h i s . w o r d P a i r . c i t i z e n ; 
-                         t h i s . i o . t o ( s i d ) . e m i t ( ' g a m e : r o l e ' ,   { 
-                                 i s L i a r , 
-                                 w o r d , 
-                                 c a t e g o r y :   t h i s . w o r d P a i r . c a t e g o r y 
-                         } ) ; 
-                 } 
- 
-                 / /   ? ���  ? � ���? ? ��	�
-                 t h i s . _ s t a r t D i s c u s s i n g ( ) ; 
-         } 
- 
-         / /   - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
-         / /   P h a s e :   D I S C U S S I N G   ( ? ���) 
-         / /   - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
-         _ s t a r t D i s c u s s i n g ( )   { 
-                 t h i s . p h a s e     =   P H A S E . D I S C U S S I N G ; 
-                 c o n s t   n           =   t h i s . r o o m . u s e r s . s i z e ; 
-                 / /   P R D :   ( N   ��  3 0 )   +   6 0 �s?                 c o n s t   t o t a l S e c   =   ( n   *   D I S C U S S _ P E R _ U S E R _ S E C )   +   D I S C U S S _ B A S E _ S E C ; 
- 
-                 t h i s . _ b r o a d c a s t ( ' g a m e : p h a s e ' ,   { 
-                         p h a s e :   P H A S E . D I S C U S S I N G , 
-                         t o t a l S e c , 
-                         r e j e c t C o u n t :   t h i s . r e j e c t C o u n t 
-                 } ) ; 
- 
-                 t h i s . _ s t a r t T i m e r ( t o t a l S e c ,   ( )   = >   t h i s . _ s t a r t V o t i n g ( ) ) ; 
-         } 
- 
-         / /   - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
-         / /   P h a s e :   V O T I N G   ( ��� ��? ? K��) 
-         / /   - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
-         _ s t a r t V o t i n g ( )   { 
-                 t h i s . p h a s e   =   P H A S E . V O T I N G ; 
-                 t h i s . v o t e s . c l e a r ( ) ; 
- 
-                 t h i s . _ b r o a d c a s t ( ' g a m e : p h a s e ' ,   { 
-                         p h a s e :   P H A S E . V O T I N G , 
-                         t o t a l S e c :   V O T E _ S E C , 
-                         u s e r s :   A r r a y . f r o m ( t h i s . r o o m . u s e r s . v a l u e s ( ) ) . m a p ( u   = >   ( { 
-                                 s o c k e t I d :   u . s o c k e t I d , 
-                                 n i c k n a m e :   u . n i c k n a m e , 
-                                 e m o j i :   u . e m o j i , 
-                                 p h o t o U r l :   u . p h o t o U r l   | |   n u l l 
-                         } ) ) 
-                 } ) ; 
- 
-                 t h i s . _ s t a r t T i m e r ( V O T E _ S E C ,   ( )   = >   t h i s . _ r e s o l v e V o t i n g ( ) ) ; 
-         } 
- 
-         / * *   ? K��  ? ���  * / 
-         r e c e i v e V o t e ( v o t e r S o c k e t I d ,   t a r g e t S o c k e t I d )   { 
-                 i f   ( t h i s . p h a s e   ! = =   P H A S E . V O T I N G )   r e t u r n ; 
-                 i f   ( v o t e r S o c k e t I d   = = =   t a r g e t S o c k e t I d )   r e t u r n ;   / /   B���$�  ? K��  z�G�? 
- 
-                 t h i s . v o t e s . s e t ( v o t e r S o c k e t I d ,   t a r g e t S o c k e t I d ) ; 
-                 t h i s . _ b r o a d c a s t ( ' g a m e : v o t e _ c o u n t ' ,   {   v o t e C o u n t :   t h i s . v o t e s . s i z e   } ) ; 
- 
-                 / /   ? ��]�  ? K��  ? ����  ? ? ��1���  ����
-                 i f   ( t h i s . v o t e s . s i z e   > =   t h i s . r o o m . u s e r s . s i z e )   { 
-                         t h i s . _ c l e a r T i m e r ( ) ; 
-                         t h i s . _ r e s o l v e V o t i n g ( ) ; 
-                 } 
-         } 
- 
-         / * *   ? K��  ����  * / 
-         _ r e s o l v e V o t i n g ( )   { 
-                 / /   [ E - 1 ]   ? ��"? ? ? K��  ? ? ? I���  ? ? ? ? ? ��!�  ��� ��? +   ? 8��  ? ��%
-                 i f   ( t h i s . v o t e s . s i z e   = = =   0 )   { 
-                         c o n s t   u s e r I d s   =   A r r a y . f r o m ( t h i s . r o o m . u s e r s . k e y s ( ) ) ; 
-                         t h i s . a c c u s e d S o c k e t I d   =   u s e r I d s [ M a t h . f l o o r ( M a t h . r a n d o m ( )   *   u s e r I d s . l e n g t h ) ] ; 
-                         c o n s t   a c c u s e d U s e r   =   t h i s . r o o m . u s e r s . g e t ( t h i s . a c c u s e d S o c k e t I d ) ; 
- 
-                         t h i s . _ b r o a d c a s t ( ' g a m e : a c c u s e d _ r a n d o m ' ,   { 
-                                 a c c u s e d S o c k e t I d :   t h i s . a c c u s e d S o c k e t I d , 
-                                 a c c u s e d N i c k n a m e :   a c c u s e d U s e r ? . n i c k n a m e   | |   ' ? ? ? ' , 
-                                 a c c u s e d E m o j i :         a c c u s e d U s e r ? . e m o j i         | |   ' ? ��' , 
-                                 a c c u s e d P h o t o :         a c c u s e d U s e r ? . p h o t o U r l   | |   n u l l 
-                         } ) ; 
-                         / /   a c c u s e d   ? ����? ? �Z� �  ? °�? ?                         t h i s . _ b r o a d c a s t ( ' g a m e : a c c u s e d ' ,   { 
-                                 a c c u s e d S o c k e t I d :   t h i s . a c c u s e d S o c k e t I d , 
-                                 a c c u s e d N i c k n a m e :   a c c u s e d U s e r ? . n i c k n a m e   | |   ' ? ? ? ' , 
-                                 a c c u s e d E m o j i :         a c c u s e d U s e r ? . e m o j i         | |   ' ? ��' , 
-                                 a c c u s e d P h o t o :         a c c u s e d U s e r ? . p h o t o U r l   | |   n u l l 
-                         } ) ; 
-                         c o n s o l e . l o g ( ` [ ? ��!�  ��� ��?   $ { t h i s . r o o m I d }   ? ? $ { a c c u s e d U s e r ? . n i c k n a m e } ` ) ; 
- 
-                         i f   ( t h i s . r e j e c t C o u n t   > =   2 )   { 
-                                 s e t T i m e o u t ( ( )   = >   t h i s . _ s t a r t K e y w o r d ( ) ,   2 5 0 0 ) ; 
-                         }   e l s e   { 
-                                 s e t T i m e o u t ( ( )   = >   t h i s . _ s t a r t D e f e n s e ( ) ,   2 5 0 0 ) ; 
-                         } 
-                         r e t u r n ; 
-                 } 
- 
-                 / /   ? zŴ�  ? ? (`����
-                 c o n s t   t a l l y   =   n e w   M a p ( ) ;   / /   t a r g e t S o c k e t I d   ? ? c o u n t 
-                 f o r   ( c o n s t   t a r g e t I d   o f   t h i s . v o t e s . v a l u e s ( ) )   { 
-                         t a l l y . s e t ( t a r g e t I d ,   ( t a l l y . g e t ( t a r g e t I d )   | |   0 )   +   1 ) ; 
-                 } 
- 
-                 / /   ���Ď�  ? zŴ�? ? ? ���  ( ? ��  ? ? ���	�? ? 
-                 l e t   m a x V o t e s   =   0 ; 
-                 l e t   s u s p e c t s   =   [ ] ; 
-                 f o r   ( c o n s t   [ s i d ,   c o u n t ]   o f   t a l l y )   { 
-                         i f   ( c o u n t   >   m a x V o t e s )   {   m a x V o t e s   =   c o u n t ;   s u s p e c t s   =   [ s i d ] ;   } 
-                         e l s e   i f   ( c o u n t   = = =   m a x V o t e s )   s u s p e c t s . p u s h ( s i d ) ; 
-                 } 
- 
-                 t h i s . a c c u s e d S o c k e t I d   =   s u s p e c t s [ M a t h . f l o o r ( M a t h . r a n d o m ( )   *   s u s p e c t s . l e n g t h ) ] ; 
-                 c o n s t   a c c u s e d U s e r         =   t h i s . r o o m . u s e r s . g e t ( t h i s . a c c u s e d S o c k e t I d ) ; 
- 
-                 t h i s . _ b r o a d c a s t ( ' g a m e : a c c u s e d ' ,   { 
-                         a c c u s e d S o c k e t I d :   t h i s . a c c u s e d S o c k e t I d , 
-                         a c c u s e d N i c k n a m e :   a c c u s e d U s e r ? . n i c k n a m e   | |   ' ? ? ? ' , 
-                         a c c u s e d E m o j i :         a c c u s e d U s e r ? . e m o j i         | |   ' ? ��' , 
-                         a c c u s e d P h o t o :         a c c u s e d U s e r ? . p h o t o U r l   | |   n u l l 
-                 } ) ; 
- 
-                 / /   P R D :   z�� �[? 2 ? ? ? ����  ? ? B�� �o? ? ���  ? �� �  ۊ���  ? |1Y�? ?                 i f   ( t h i s . r e j e c t C o u n t   > =   2 )   { 
-                         s e t T i m e o u t ( ( )   = >   t h i s . _ s t a r t K e y w o r d ( ) ,   1 5 0 0 ) ; 
-                 }   e l s e   { 
-                         s e t T i m e o u t ( ( )   = >   t h i s . _ s t a r t D e f e n s e ( ) ,   1 5 0 0 ) ; 
-                 } 
-         } 
- 
-         / /   - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
-         / /   P h a s e :   D E F E N S E   ( ����Q�  B�� �o? 3 0 �s? 
-         / /   - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
-         _ s t a r t D e f e n s e ( )   { 
-                 t h i s . p h a s e   =   P H A S E . D E F E N S E ; 
- 
-                 t h i s . _ b r o a d c a s t ( ' g a m e : p h a s e ' ,   { 
-                         p h a s e :   P H A S E . D E F E N S E , 
-                         t o t a l S e c :   D E F E N S E _ S E C 
-                 } ) ; 
- 
-                 t h i s . _ s t a r t T i m e r ( D E F E N S E _ S E C ,   ( )   = >   t h i s . _ s t a r t A g r e e ( ) ) ; 
-         } 
- 
-         / /   - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
-         / /   P h a s e :   A G R E E   ( ? ���/ ����޸? ? ? K��) 
-         / /   - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
-         _ s t a r t A g r e e ( )   { 
-                 t h i s . p h a s e   =   P H A S E . A G R E E ; 
-                 t h i s . a g r e e s . c l e a r ( ) ; 
- 
-                 t h i s . _ b r o a d c a s t ( ' g a m e : p h a s e ' ,   { 
-                         p h a s e :   P H A S E . A G R E E , 
-                         t o t a l S e c :   A G R E E _ S E C , 
-                         r e j e c t C o u n t :   t h i s . r e j e c t C o u n t 
-                 } ) ; 
- 
-                 t h i s . _ s t a r t T i m e r ( A G R E E _ S E C ,   ( )   = >   t h i s . _ r e s o l v e A g r e e ( ) ) ; 
-         } 
- 
-         / * *   ? ���/ ����޸? ? ? ���  * / 
-         r e c e i v e A g r e e ( v o t e r S o c k e t I d ,   a g r e e d )   { 
-                 i f   ( t h i s . p h a s e   ! = =   P H A S E . A G R E E )   r e t u r n ; 
-                 i f   ( v o t e r S o c k e t I d   = = =   t h i s . a c c u s e d S o c k e t I d )   r e t u r n ;   / /   ? y$��? ? B���$�  ? ����
- 
-                 t h i s . a g r e e s . s e t ( v o t e r S o c k e t I d ,   a g r e e d ) ; 
- 
-                 / /   ? ��]�  ? ����  ? ? ��1���  ����
-                 c o n s t   e l i g i b l e C o u n t   =   t h i s . r o o m . u s e r s . s i z e   -   1 ; 
-                 i f   ( t h i s . a g r e e s . s i z e   > =   e l i g i b l e C o u n t )   { 
-                         t h i s . _ c l e a r T i m e r ( ) ; 
-                         t h i s . _ r e s o l v e A g r e e ( ) ; 
-                 } 
-         } 
- 
-         / * *   ? ���  ����  * / 
-         _ r e s o l v e A g r e e ( )   { 
-                 / /   [ E - 2 ]   ? |1#�  ? K��? ? ? ��]���? rn׬? ? ���  (`����? ? (`����  ( ������? ���  ? ����) 
-                 c o n s t   a c t u a l V o t e r s     =   t h i s . a g r e e s . s i z e ; 
-                 c o n s t   a g r e e C o u n t         =   A r r a y . f r o m ( t h i s . a g r e e s . v a l u e s ( ) ) . f i l t e r ( v   = >   v ) . l e n g t h ; 
-                 c o n s t   d i s a g r e e C o u n t   =   a c t u a l V o t e r s   -   a g r e e C o u n t ; 
- 
-                 / /   ? ��"? ? ? K��  ? ? ? G�E�? ? ? ��? ? �[�æ�:   ? ���  ���%  ( rnլ���Z? 
-                 l e t   m a j o r i t y ; 
-                 i f   ( a c t u a l V o t e r s   = = =   0 )   { 
-                         / /   ? ��"? ? ? K��  ? ? ? �2  (`����? ? ? ����o? �Z���
-                         t h i s . _ b r o a d c a s t ( ' g a m e : c o n f i r m e d ' ,   {   a c c u s e d S o c k e t I d :   t h i s . a c c u s e d S o c k e t I d   } ) ; 
-                         s e t T i m e o u t ( ( )   = >   t h i s . _ s t a r t K e y w o r d ( ) ,   1 5 0 0 ) ; 
-                         r e t u r n ; 
-                 } 
-                 m a j o r i t y   =   M a t h . f l o o r ( a c t u a l V o t e r s   /   2 )   +   1 ; 
- 
-                 i f   ( d i s a g r e e C o u n t   > =   m a j o r i t y )   { 
-                         / /   P R D :   ����޸? ? (`����? ? ? ? z�� �[? �o{1�
-                         t h i s . r e j e c t C o u n t + + ; 
-                         t h i s . _ b r o a d c a s t ( ' g a m e : r e j e c t e d ' ,   {   r e j e c t C o u n t :   t h i s . r e j e c t C o u n t   } ) ; 
-                         s e t T i m e o u t ( ( )   = >   { 
-                                 t h i s . _ s t a r t D i s c u s s i n g ( ) ; 
-                         } ,   2 0 0 0 ) ; 
-                 }   e l s e   { 
-                         / /   ? ���  (`����? ? ? ? ? |1Y�? ? ? c$�
-                         t h i s . _ b r o a d c a s t ( ' g a m e : c o n f i r m e d ' ,   {   a c c u s e d S o c k e t I d :   t h i s . a c c u s e d S o c k e t I d   } ) ; 
-                         s e t T i m e o u t ( ( )   = >   t h i s . _ s t a r t K e y w o r d ( ) ,   1 5 0 0 ) ; 
-                 } 
-         } 
- 
-         / /   - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
-         / /   P h a s e :   K E Y W O R D   ( �N��? ? ? 2 0 �s? 
-         / /   - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
-         _ s t a r t K e y w o r d ( )   { 
-                 t h i s . p h a s e   =   P H A S E . K E Y W O R D ; 
- 
-                 / /   ? y$��? /�ɿ�[? ? ? ? �Ć�
-                 t h i s . i o . t o ( t h i s . a c c u s e d S o c k e t I d ) . e m i t ( ' g a m e : p h a s e ' ,   { 
-                         p h a s e :   P H A S E . K E Y W O R D , 
-                         t o t a l S e c :   K E Y W O R D _ S E C , 
-                         i s A c c u s e d :   t r u e , 
-                         c i t i z e n W o r d :   t h i s . w o r d P a i r . c i t i z e n   / /   ? �� �? ��?   ����? ? ? ? ? ? ����
-                 } ) ; 
- 
-                 / /   ? �g2��� ? ? ? � rn? ? ��2
-                 f o r   ( c o n s t   [ s i d ]   o f   t h i s . r o o m . u s e r s )   { 
-                         i f   ( s i d   ! = =   t h i s . a c c u s e d S o c k e t I d )   { 
-                                 t h i s . i o . t o ( s i d ) . e m i t ( ' g a m e : p h a s e ' ,   { 
-                                         p h a s e :   P H A S E . K E Y W O R D , 
-                                         t o t a l S e c :   K E Y W O R D _ S E C , 
-                                         i s A c c u s e d :   f a l s e 
-                                 } ) ; 
-                         } 
-                 } 
- 
-                 t h i s . _ s t a r t T i m e r ( K E Y W O R D _ S E C ,   ( )   = >   { 
-                         / /   ? ����  �sG���  ? ? ? � 1u? �[ˮ]��o? ���%
-                         t h i s . _ r e s o l v e R e s u l t ( ' ' ) ; 
-                 } ) ; 
-         } 
- 
-         / * *   ? |1Y�? ? ? ��g�  ? ���  * / 
-         r e c e i v e K e y w o r d ( s e n d e r S o c k e t I d ,   k e y w o r d )   { 
-                 i f   ( t h i s . p h a s e   ! = =   P H A S E . K E Y W O R D )   r e t u r n ; 
-                 i f   ( s e n d e r S o c k e t I d   ! = =   t h i s . a c c u s e d S o c k e t I d )   r e t u r n ; 
- 
-                 t h i s . _ c l e a r T i m e r ( ) ; 
-                 t h i s . _ r e s o l v e R e s u l t ( k e y w o r d . t r i m ( ) ) ; 
-         } 
- 
-         / /   - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
-         / /   P h a s e :   R E S U L T   ( �[̬��  ? ׬�) 
-         / /   - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
-         _ r e s o l v e R e s u l t ( s u b m i t t e d K e y w o r d )   { 
-                 t h i s . p h a s e   =   P H A S E . R E S U L T ; 
- 
-                 c o n s t   c o r r e c t A n s w e r     =   t h i s . w o r d P a i r . c i t i z e n ; 
-                 c o n s t   i s C o r r e c t             =   s u b m i t t e d K e y w o r d . t o L o w e r C a s e ( )   = = =   c o r r e c t A n s w e r . t o L o w e r C a s e ( ) ; 
-                 c o n s t   i s A c c u s e d L i a r     =   t h i s . a c c u s e d S o c k e t I d   = = =   t h i s . l i a r S o c k e t I d ; 
- 
-                 / * * 
-                   *   P R D   ? /�Բ  ? ׬�  (`����: 
-                   *   [ ? �� �? ? ? 8�%  =   ? ���? -�?   ? ����? ? ����c�  �[�æ�] 
-                   *       -   ? ���? -�?   ����h�  ? �� �? ? ? ? ? �� �? ? + 2 ? ?                   *       -   ? ���? -�?   ? ����? ? ? ��?   ? ? 9m? ? ��?   + 1 ? ?                   *       -   ? �g2���   + 0 ? ?                   * 
-                   *   [ ? ��?   ? 8�%  =   ? ���? -�?   ? ����? ? ? � 1u? �[�æ�] 
-                   *       -   ? ���? ? 0 ? ?                   *       -   ? �g2���   ? ��?   ? ��]�  + 1 ? ?                   * / 
-                 c o n s t   s c o r e C h a n g e s   =   { } ;   / /   s o c k e t I d   ? ? d e l t a 
- 
-                 i f   ( i s C o r r e c t )   { 
-                         / /   ? �� �? ? ? 8�%
-                         i f   ( i s A c c u s e d L i a r )   { 
-                                 s c o r e C h a n g e s [ t h i s . a c c u s e d S o c k e t I d ]   =   2 ; 
-                         }   e l s e   { 
-                                 s c o r e C h a n g e s [ t h i s . a c c u s e d S o c k e t I d ]   =   1 ; 
-                         } 
-                 }   e l s e   { 
-                         / /   ? ��?   ? 8�%
-                         f o r   ( c o n s t   [ s i d ]   o f   t h i s . r o o m . u s e r s )   { 
-                                 i f   ( s i d   ! = =   t h i s . a c c u s e d S o c k e t I d )   { 
-                                         s c o r e C h a n g e s [ s i d ]   =   1 ; 
-                                 } 
-                         } 
-                 } 
- 
-                 / /   ? /�Բ  ? ����
-                 f o r   ( c o n s t   [ s i d ,   u s e r ]   o f   t h i s . r o o m . u s e r s )   { 
-                         u s e r . s c o r e   + =   ( s c o r e C h a n g e s [ s i d ]   | |   0 ) ; 
-                 } 
- 
-                 / /   �[̬��  ɑ���? ����? }1ô
-                 c o n s t   u s e r s P a y l o a d   =   A r r a y . f r o m ( t h i s . r o o m . u s e r s . v a l u e s ( ) ) . m a p ( u   = >   ( { 
-                         s o c k e t I d :   u . s o c k e t I d , 
-                         n i c k n a m e :   u . n i c k n a m e , 
-                         e m o j i :   u . e m o j i , 
-                         p h o t o U r l :   u . p h o t o U r l   | |   n u l l , 
-                         s c o r e :   u . s c o r e , 
-                         s c o r e D e l t a :   s c o r e C h a n g e s [ u . s o c k e t I d ]   | |   0 , 
-                         i s H o s t :   u . i s H o s t 
-                 } ) ) ; 
- 
-                 t h i s . _ b r o a d c a s t ( ' g a m e : r e s u l t ' ,   { 
-                         i s C o r r e c t , 
-                         i s A c c u s e d L i a r , 
-                         a c c u s e d S o c k e t I d :   t h i s . a c c u s e d S o c k e t I d , 
-                         l i a r S o c k e t I d :         t h i s . l i a r S o c k e t I d , 
-                         c i t i z e n W o r d :           c o r r e c t A n s w e r , 
-                         s u b m i t t e d K e y w o r d , 
-                         l i a r W o r d :                 t h i s . w o r d P a i r . l i a r , 
-                         c a t e g o r y :                 t h i s . w o r d P a i r . c a t e g o r y , 
-                         u s e r s :                       u s e r s P a y l o a d , 
-                         v i c t o r y T e a m :           i s C o r r e c t   ?   ' L I A R '   :   ' C I T I Z E N ' 
-                 } ) ; 
- 
-                 / /   �[����  ������  ? ? ۊy$��  I D L E   ? ��m��o?                 t h i s . r o o m . g a m e   =   n u l l ; 
-         } 
- 
-         / /   - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
-         / /   ? �ȥ�
-         / /   - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
-         _ b r o a d c a s t ( e v e n t ,   d a t a )   { 
-                 t h i s . i o . t o ( t h i s . r o o m I d ) . e m i t ( e v e n t ,   d a t a ) ; 
-         } 
- 
-         _ s t a r t T i m e r ( t o t a l S e c ,   o n E x p i r e )   { 
-                 t h i s . _ c l e a r T i m e r ( ) ; 
-                 t h i s . _ t i m e r S e c   =   t o t a l S e c ; 
- 
-                 t h i s . _ b r o a d c a s t ( ' g a m e : t i m e r ' ,   {   s e c :   t o t a l S e c ,   t o t a l S e c   } ) ; 
- 
-                 t h i s . _ t i m e r I n t e r v a l   =   s e t I n t e r v a l ( ( )   = >   { 
-                         t h i s . _ t i m e r S e c - - ; 
-                         t h i s . _ b r o a d c a s t ( ' g a m e : t i m e r ' ,   {   s e c :   t h i s . _ t i m e r S e c ,   t o t a l S e c   } ) ; 
- 
-                         i f   ( t h i s . _ t i m e r S e c   < =   0 )   { 
-                                 t h i s . _ c l e a r T i m e r ( ) ; 
-                                 o n E x p i r e ( ) ; 
-                         } 
-                 } ,   1 0 0 0 ) ; 
-         } 
- 
-         _ c l e a r T i m e r ( )   { 
-                 i f   ( t h i s . _ t i m e r I n t e r v a l )   { 
-                         c l e a r I n t e r v a l ( t h i s . _ t i m e r I n t e r v a l ) ; 
-                         t h i s . _ t i m e r I n t e r v a l   =   n u l l ; 
-                 } 
-         } 
- 
-         / * *   ۊ? ? ? #�  ? ? ? ��%  * / 
-         d e s t r o y ( )   { 
-                 t h i s . _ c l e a r T i m e r ( ) ; 
-         } 
- } 
- 
- m o d u l e . e x p o r t s   =   {   L i a r E n g i n e ,   P H A S E   } ; 
-  
- 
+/**
+ * LiarEngine — 라이어 게임 서버 사이드 상태머신
+ * PRD 3.1 전체 룰 구현
+ *
+ * State Flow:
+ *   IDLE → DISCUSSING → VOTING → DEFENSE → AGREE → KEYWORD → RESULT
+ *   (부결 시 AGREE → DISCUSSING 롤백, 최대 2회 부결 후 강제 KEYWORD)
+ */
+
+// ============================================================
+// 제시어 데이터 (카테고리 → [시민 단어, 라이어 유사 단어] 쌍)
+// ============================================================
+const WORD_PAIRS = [
+    { category: '과일',   citizen: '수박',   liar: '참외'    },
+    { category: '과일',   citizen: '딸기',   liar: '방울토마토' },
+    { category: '동물',   citizen: '강아지', liar: '고양이'  },
+    { category: '동물',   citizen: '토끼',   liar: '햄스터'  },
+    { category: '음식',   citizen: '피자',   liar: '파스타'  },
+    { category: '음식',   citizen: '치킨',   liar: '피자'    },
+    { category: '음식',   citizen: '삼겹살', liar: '목살'    },
+    { category: '장소',   citizen: '도서관', liar: '서점'    },
+    { category: '장소',   citizen: '카페',   liar: '레스토랑'},
+    { category: '직업',   citizen: '의사',   liar: '간호사'  },
+    { category: '직업',   citizen: '선생님', liar: '교수'    },
+    { category: '스포츠', citizen: '축구',   liar: '풋살'    },
+    { category: '스포츠', citizen: '농구',   liar: '핸드볼'  },
+    { category: '연예인', citizen: 'BTS',    liar: 'EXO'     },
+    { category: '영화',   citizen: '어벤저스', liar: '아이언맨' },
+];
+
+// ============================================================
+// 게임 상태 상수
+// ============================================================
+const PHASE = {
+    IDLE:       'IDLE',
+    DISCUSSING: 'DISCUSSING',
+    VOTING:     'VOTING',
+    DEFENSE:    'DEFENSE',
+    AGREE:      'AGREE',
+    KEYWORD:    'KEYWORD',
+    RESULT:     'RESULT'
+};
+
+// PRD: 타이머 공식
+const DISCUSS_BASE_SEC = 60;
+const DISCUSS_PER_USER_SEC = 30;
+const VOTE_SEC = 20;
+const DEFENSE_SEC = 30;
+const AGREE_SEC = 20;
+const KEYWORD_SEC = 20;
+
+// ============================================================
+// LiarEngine 클래스
+// ============================================================
+class LiarEngine {
+    constructor(room, io) {
+        this.room       = room;      // 방 객체 참조
+        this.io         = io;        // socket.io 서버 인스턴스
+        this.roomId     = room.id;
+
+        // 게임 상태
+        this.phase      = PHASE.IDLE;
+        this.wordPair   = null;      // { category, citizen, liar }
+        this.liarSocketId = null;    // 라이어 소켓 ID
+
+        // 투표
+        this.votes      = new Map(); // voterId → targetSocketId
+        this.accusedSocketId = null; // 지목된 용의자
+
+        // 동의/미동의
+        this.agrees     = new Map(); // voterId → boolean
+        this.rejectCount = 0;        // PRD: 부결 누적 횟수 (최대 2)
+
+        // 타이머
+        this._timerInterval = null;
+        this._timerSec = 0;
+    }
+
+    // ----------------------------------------------------------
+    // 게임 시작
+    // ----------------------------------------------------------
+    start() {
+        // 제시어 무작위 선택
+        this.wordPair = WORD_PAIRS[Math.floor(Math.random() * WORD_PAIRS.length)];
+
+        // 라이어 무작위 선정
+        const userIds = Array.from(this.room.users.keys());
+        this.liarSocketId = userIds[Math.floor(Math.random() * userIds.length)];
+
+        console.log(`[게임 시작] ${this.roomId} | 제시어: ${this.wordPair.citizen} | 라이어: ${this.liarSocketId}`);
+
+        // PRD: 개별 단어 전송 (역할 블라인드)
+        for (const [sid, _user] of this.room.users) {
+            const isLiar  = sid === this.liarSocketId;
+            const word    = isLiar ? this.wordPair.liar : this.wordPair.citizen;
+            this.io.to(sid).emit('game:role', {
+                isLiar,
+                word,
+                category: this.wordPair.category
+            });
+        }
+
+        // 토론 페이즈 시작
+        this._startDiscussing();
+    }
+
+    // ----------------------------------------------------------
+    // Phase: DISCUSSING (토론)
+    // ----------------------------------------------------------
+    _startDiscussing() {
+        this.phase  = PHASE.DISCUSSING;
+        const n     = this.room.users.size;
+        // PRD: (N × 30) + 60초
+        const totalSec = (n * DISCUSS_PER_USER_SEC) + DISCUSS_BASE_SEC;
+
+        this._broadcast('game:phase', {
+            phase: PHASE.DISCUSSING,
+            totalSec,
+            rejectCount: this.rejectCount
+        });
+
+        this._startTimer(totalSec, () => this._startVoting());
+    }
+
+    // ----------------------------------------------------------
+    // Phase: VOTING (지목 투표)
+    // ----------------------------------------------------------
+    _startVoting() {
+        this.phase = PHASE.VOTING;
+        this.votes.clear();
+
+        this._broadcast('game:phase', {
+            phase: PHASE.VOTING,
+            totalSec: VOTE_SEC,
+            users: Array.from(this.room.users.values()).map(u => ({
+                socketId: u.socketId,
+                nickname: u.nickname,
+                emoji: u.emoji,
+                photoUrl: u.photoUrl || null
+            }))
+        });
+
+        this._startTimer(VOTE_SEC, () => this._resolveVoting());
+    }
+
+    /** 투표 수신 */
+    receiveVote(voterSocketId, targetSocketId) {
+        if (this.phase !== PHASE.VOTING) return;
+        if (voterSocketId === targetSocketId) return; // 본인 투표 불가
+
+        this.votes.set(voterSocketId, targetSocketId);
+        this._broadcast('game:vote_count', { voteCount: this.votes.size });
+
+        // 전원 투표 완료 시 즉시 집계
+        if (this.votes.size >= this.room.users.size) {
+            this._clearTimer();
+            this._resolveVoting();
+        }
+    }
+
+    /** 투표 집계 */
+    _resolveVoting() {
+        // [E-1] 아무도 투표 안 했을 때 → 랜덤 지목 + 특별 알림
+        if (this.votes.size === 0) {
+            const userIds = Array.from(this.room.users.keys());
+            this.accusedSocketId = userIds[Math.floor(Math.random() * userIds.length)];
+            const accusedUser = this.room.users.get(this.accusedSocketId);
+
+            this._broadcast('game:accused_random', {
+                accusedSocketId: this.accusedSocketId,
+                accusedNickname: accusedUser?.nickname || '???',
+                accusedEmoji:    accusedUser?.emoji    || '😶',
+                accusedPhoto:    accusedUser?.photoUrl || null
+            });
+            // accused 정보도 같이 동기화
+            this._broadcast('game:accused', {
+                accusedSocketId: this.accusedSocketId,
+                accusedNickname: accusedUser?.nickname || '???',
+                accusedEmoji:    accusedUser?.emoji    || '😶',
+                accusedPhoto:    accusedUser?.photoUrl || null
+            });
+            console.log(`[랜덤 지목] ${this.roomId} → ${accusedUser?.nickname}`);
+
+            if (this.rejectCount >= 2) {
+                setTimeout(() => this._startKeyword(), 2500);
+            } else {
+                setTimeout(() => this._startDefense(), 2500);
+            }
+            return;
+        }
+
+        // 득표 수 계산
+        const tally = new Map(); // targetSocketId → count
+        for (const targetId of this.votes.values()) {
+            tally.set(targetId, (tally.get(targetId) || 0) + 1);
+        }
+
+        // 최다 득표자 선정 (동점 시 무작위)
+        let maxVotes = 0;
+        let suspects = [];
+        for (const [sid, count] of tally) {
+            if (count > maxVotes) { maxVotes = count; suspects = [sid]; }
+            else if (count === maxVotes) suspects.push(sid);
+        }
+
+        this.accusedSocketId = suspects[Math.floor(Math.random() * suspects.length)];
+        const accusedUser    = this.room.users.get(this.accusedSocketId);
+
+        this._broadcast('game:accused', {
+            accusedSocketId: this.accusedSocketId,
+            accusedNickname: accusedUser?.nickname || '???',
+            accusedEmoji:    accusedUser?.emoji    || '😶',
+            accusedPhoto:    accusedUser?.photoUrl || null
+        });
+
+        // PRD: 부결 2회 누적 → 변론/동의 없이 바로 키워드
+        if (this.rejectCount >= 2) {
+            setTimeout(() => this._startKeyword(), 1500);
+        } else {
+            setTimeout(() => this._startDefense(), 1500);
+        }
+    }
+
+    // ----------------------------------------------------------
+    // Phase: DEFENSE (최후 변론 30초)
+    // ----------------------------------------------------------
+    _startDefense() {
+        this.phase = PHASE.DEFENSE;
+
+        this._broadcast('game:phase', {
+            phase: PHASE.DEFENSE,
+            totalSec: DEFENSE_SEC
+        });
+
+        this._startTimer(DEFENSE_SEC, () => this._startAgree());
+    }
+
+    // ----------------------------------------------------------
+    // Phase: AGREE (동의/미동의 투표)
+    // ----------------------------------------------------------
+    _startAgree() {
+        this.phase = PHASE.AGREE;
+        this.agrees.clear();
+
+        this._broadcast('game:phase', {
+            phase: PHASE.AGREE,
+            totalSec: AGREE_SEC,
+            rejectCount: this.rejectCount
+        });
+
+        this._startTimer(AGREE_SEC, () => this._resolveAgree());
+    }
+
+    /** 동의/미동의 수신 */
+    receiveAgree(voterSocketId, agreed) {
+        if (this.phase !== PHASE.AGREE) return;
+        if (voterSocketId === this.accusedSocketId) return; // 용의자 본인 제외
+
+        this.agrees.set(voterSocketId, agreed);
+
+        // 전원 완료 시 즉시 집계
+        const eligibleCount = this.room.users.size - 1;
+        if (this.agrees.size >= eligibleCount) {
+            this._clearTimer();
+            this._resolveAgree();
+        }
+    }
+
+    /** 동의 집계 */
+    _resolveAgree() {
+        // [E-2] 실제 투표한 인원만 기준으로 과반수 계산 (미투표자 제외)
+        const actualVoters  = this.agrees.size;
+        const agreeCount    = Array.from(this.agrees.values()).filter(v => v).length;
+        const disagreeCount = actualVoters - agreeCount;
+
+        // 아무도 투표 안 했거나 동점인 경우: 동의 처리 (기본값)
+        let majority;
+        if (actualVoters === 0) {
+            // 아무도 투표 안 하면 과반수 동의로 간주
+            this._broadcast('game:confirmed', { accusedSocketId: this.accusedSocketId });
+            setTimeout(() => this._startKeyword(), 1500);
+            return;
+        }
+        majority = Math.floor(actualVoters / 2) + 1;
+
+        if (disagreeCount >= majority) {
+            // PRD: 미동의 과반수 → 부결 롤백
+            this.rejectCount++;
+            this._broadcast('game:rejected', { rejectCount: this.rejectCount });
+            setTimeout(() => {
+                this._startDiscussing();
+            }, 2000);
+        } else {
+            // 동의 과반수 → 키워드 단계
+            this._broadcast('game:confirmed', { accusedSocketId: this.accusedSocketId });
+            setTimeout(() => this._startKeyword(), 1500);
+        }
+    }
+
+    // ----------------------------------------------------------
+    // Phase: KEYWORD (주관식 20초)
+    // ----------------------------------------------------------
+    _startKeyword() {
+        this.phase = PHASE.KEYWORD;
+
+        // 용의자에게 폼 표시
+        this.io.to(this.accusedSocketId).emit('game:phase', {
+            phase: PHASE.KEYWORD,
+            totalSec: KEYWORD_SEC,
+            isAccused: true,
+            citizenWord: this.wordPair.citizen // 라이어가 맞혀야 할 정답
+        });
+
+        // 나머지는 대기 화면
+        for (const [sid] of this.room.users) {
+            if (sid !== this.accusedSocketId) {
+                this.io.to(sid).emit('game:phase', {
+                    phase: PHASE.KEYWORD,
+                    totalSec: KEYWORD_SEC,
+                    isAccused: false
+                });
+            }
+        }
+
+        this._startTimer(KEYWORD_SEC, () => {
+            // 시간 초과 → 틀린 것으로 처리
+            this._resolveResult('');
+        });
+    }
+
+    /** 키워드 제출 수신 */
+    receiveKeyword(senderSocketId, keyword) {
+        if (this.phase !== PHASE.KEYWORD) return;
+        if (senderSocketId !== this.accusedSocketId) return;
+
+        this._clearTimer();
+        this._resolveResult(keyword.trim());
+    }
+
+    // ----------------------------------------------------------
+    // Phase: RESULT (결과 산정)
+    // ----------------------------------------------------------
+    _resolveResult(submittedKeyword) {
+        this.phase = PHASE.RESULT;
+
+        const correctAnswer  = this.wordPair.citizen;
+        const isCorrect      = submittedKeyword.toLowerCase() === correctAnswer.toLowerCase();
+        const isAccusedLiar  = this.accusedSocketId === this.liarSocketId;
+
+        /**
+         * PRD 점수 산정 공식:
+         * [라이어 승리 = 선정자가 정답을 맞춘 경우]
+         *   - 선정자가 진짜 라이어 → 라이어 +2점
+         *   - 선정자가 억울한 시민 → 그 시민 +1점
+         *   - 나머지 +0점
+         *
+         * [시민 승리 = 선정자가 정답을 틀린 경우]
+         *   - 선정자 0점
+         *   - 나머지 시민 전원 +1점
+         */
+        const scoreChanges = {}; // socketId → delta
+
+        if (isCorrect) {
+            // 라이어 승리
+            if (isAccusedLiar) {
+                scoreChanges[this.accusedSocketId] = 2;
+            } else {
+                scoreChanges[this.accusedSocketId] = 1;
+            }
+        } else {
+            // 시민 승리
+            for (const [sid] of this.room.users) {
+                if (sid !== this.accusedSocketId) {
+                    scoreChanges[sid] = 1;
+                }
+            }
+        }
+
+        // 점수 적용
+        for (const [sid, user] of this.room.users) {
+            user.score += (scoreChanges[sid] || 0);
+        }
+
+        // 결과 브로드캐스트
+        const usersPayload = Array.from(this.room.users.values()).map(u => ({
+            socketId: u.socketId,
+            nickname: u.nickname,
+            emoji: u.emoji,
+            photoUrl: u.photoUrl || null,
+            score: u.score,
+            scoreDelta: scoreChanges[u.socketId] || 0,
+            isHost: u.isHost
+        }));
+
+        this._broadcast('game:result', {
+            isCorrect,
+            isAccusedLiar,
+            accusedSocketId: this.accusedSocketId,
+            liarSocketId:    this.liarSocketId,
+            citizenWord:     correctAnswer,
+            submittedKeyword,
+            liarWord:        this.wordPair.liar,
+            category:        this.wordPair.category,
+            users:           usersPayload,
+            victoryTeam:     isCorrect ? 'LIAR' : 'CITIZEN'
+        });
+
+        // 게임 종료 — 방을 IDLE 상태로
+        this.room.game = null;
+    }
+
+    // ----------------------------------------------------------
+    // 유틸
+    // ----------------------------------------------------------
+    _broadcast(event, data) {
+        this.io.to(this.roomId).emit(event, data);
+    }
+
+    _startTimer(totalSec, onExpire) {
+        this._clearTimer();
+        this._timerSec = totalSec;
+
+        this._broadcast('game:timer', { sec: totalSec, totalSec });
+
+        this._timerInterval = setInterval(() => {
+            this._timerSec--;
+            this._broadcast('game:timer', { sec: this._timerSec, totalSec });
+
+            if (this._timerSec <= 0) {
+                this._clearTimer();
+                onExpire();
+            }
+        }, 1000);
+    }
+
+    _clearTimer() {
+        if (this._timerInterval) {
+            clearInterval(this._timerInterval);
+            this._timerInterval = null;
+        }
+    }
+
+    /** 방 삭제 시 정리 */
+    destroy() {
+        this._clearTimer();
+    }
+}
+
+module.exports = { LiarEngine, PHASE };
