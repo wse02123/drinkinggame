@@ -118,7 +118,8 @@ async function joinRoom(payload, callback) {
     if (!roomId) {
         // 새 방 개설
         const { data, error } = await supabaseClient.from('rooms').insert({
-            name: payload.name || payload.password || '새 테이블', // 임시로 rName 받기
+            name: payload.name || payload.password || '새 테이블',
+            password: payload.password || null,
             host_id: '00000000-0000-0000-0000-000000000000', // 추후 myId 반영
             game_status: 'LOBBY'
         }).select();
@@ -689,4 +690,4 @@ class LiarEngine {
     }
 }
 
-module.exports = { LiarEngine, PHASE };
+window.LiarEngine = LiarEngine; window.PHASE = PHASE;

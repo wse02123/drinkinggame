@@ -122,7 +122,8 @@ async function joinRoom(payload, callback) {
     if (!roomId) {
         // 새 방 개설
         const { data, error } = await supabaseClient.from('rooms').insert({
-            name: payload.name || payload.password || '새 테이블', // 임시로 rName 받기
+            name: payload.name || payload.password || '새 테이블',
+            password: payload.password || null,
             host_id: '00000000-0000-0000-0000-000000000000', // 추후 myId 반영
             game_status: 'LOBBY'
         }).select();
@@ -245,7 +246,7 @@ async function leaveRoom() {
 // ==========================================
 // 엔진 코드 임베딩
 // ==========================================
-` + engineCode.replace(/module\.exports = LiarEngine;/, 'window.LiarEngine = LiarEngine;');
+` + engineCode.replace(/module\.exports = \{ LiarEngine, PHASE \};/g, 'window.LiarEngine = LiarEngine; window.PHASE = PHASE;');
 
 fs.writeFileSync('supabase_logic.js', wrapperCode);
 console.log('supabase_logic.js 생성 완료!');

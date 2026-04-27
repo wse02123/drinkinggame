@@ -13,6 +13,7 @@ DROP TABLE IF EXISTS rooms CASCADE;
 CREATE TABLE rooms (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name TEXT NOT NULL,
+    password TEXT, -- 비밀방 생성을 위한 비밀번호 컬럼
     host_id UUID NOT NULL, -- 방장 player id
     game_status TEXT DEFAULT 'LOBBY', -- 'LOBBY'(대기/Y), 'PLAYING'(진행중), 'FINISHED'(종료/N)
     current_phase TEXT DEFAULT 'NONE', 
