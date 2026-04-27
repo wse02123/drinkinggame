@@ -45,8 +45,9 @@
         }
 
         /* 뷰 padding 설정 */
-        .view { display: none; flex-direction: column; flex: 1; min-height: 0; padding: 20px 20px 30px 20px; animation: fadeIn 0.3s ease; overflow-y: auto; overflow-x: hidden; position: relative; z-index:10; padding-bottom: 240px; }
+        .view { display: none; flex-direction: column; flex: 1; min-height: 0; padding: 20px 20px 30px 20px; animation: fadeIn 0.3s ease; overflow-y: auto; overflow-x: hidden; position: relative; z-index:10; }
         .view.active { display: flex; }
+        #view-room.active { padding-bottom: 220px !important; }
         #view-signup.active { padding-bottom: 40px; } /* 회원가입의 경우 플로팅 없음 */
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
@@ -1249,6 +1250,13 @@
                 if (isHostLevel) showToast('방장이 되었습니다! 🎉');
             });
 
+            // ---- 방장 이탈에 따른 권한 위임 ----
+            socket.on('game:host_handoff', () => {
+                isHostLevel = true;
+                updateRoomControls();
+                showToast('👑 방장이 나가서 방장 권한을 위임받았습니다!');
+            });
+
             // ---- 게임 요청 알림 (화력지원) ----
             socket.on('game:request:broadcast', ({ requesterSocketId, requesterNickname, gameName }) => {
                 // 3-1: 요청자 아바타에 말풍선 표시 (다른 사람 화면에도 보임)
@@ -1529,7 +1537,12 @@
         const container = document.getElementById('roomListContainer');
         // Gate 3 하드코딩 목업 보존 후 소켓 방 목록을 앞에 삽입
         const socketRoomsHtml = rooms.map(r => {
-            if (r.isFull) {
+            if (r.game_status === 'PLAYING') {
+                return `<div class="room-card-item" data-name="${r.name}" style="opacity:0.5;cursor:not-allowed;">
+                    <div><h4 style="color:var(--ink);font-family:'Jua';font-size:1.3em;">${r.isLocked?'🔒':'🍻'} ${r.name}</h4>
+                    <p style="font-size:0.9em;font-weight:bold;color:var(--point-red);margin-top:5px;">게임중 (입장불가)</p></div>
+                    <div style="font-size:1em;font-weight:900;">${r.userCount} / 8명</div></div>`;
+            } else if (r.isFull) {
                 return `<div class="room-card-item" data-name="${r.name}" style="opacity:0.5;cursor:not-allowed;">
                     <div><h4 style="color:var(--ink);font-family:'Jua';font-size:1.3em;">${r.isLocked?'🔒':'🍻'} ${r.name}</h4>
                     <p style="font-size:0.9em;font-weight:bold;color:var(--point-red);margin-top:5px;">입장불가 (만석)</p></div>

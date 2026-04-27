@@ -49,8 +49,10 @@ const mockSocket = {
                     return;
                 }
                 if (event === 'game:start') {
+                    if (realtimeChannel) realtimeChannel.send({ type: 'broadcast', event: 'game:start_loading', payload: {} });
                     window.hostGameEngine.start();
                     if (callback) callback({success: true});
+                    supabaseClient.from('rooms').update({ game_status: 'PLAYING', started_at: new Date().toISOString() }).eq('id', window.hostGameEngine.roomId).then();
                 } else if (event === 'game:phase_skip') {
                     // 방장 스킵
                     window.hostGameEngine._clearTimer();
@@ -102,12 +104,17 @@ let roomUsers = [];
 
 // ---- 방 목록 패치 로직 ----
 async function fetchRoomList() {
-    const { data: rooms, error } = await supabaseClient.from('rooms').select('*, players(id)').eq('game_status', 'LOBBY');
+    const { data: rooms, error } = await supabaseClient.from('rooms').select('*, players(id)').order('created_at', { ascending: false });
     if (!error && rooms) {
-        const mapped = rooms.map(r => ({
+        // userCount가 0인 방은 로비에 안 보이게 필터링 (가비지 컬렉션 역할)
+        const activeRooms = rooms.filter(r => (r.players && r.players.length > 0) || (Date.now() - new Date(r.created_at).getTime() < 60000));
+        
+        const mapped = activeRooms.map(r => ({
             id: r.id,
             name: r.name,
-            isLocked: false,
+            password: !!r.password,  // 비밀번호 존재 여부
+            game_status: r.game_status, // LOBBY or PLAYING
+            isLocked: !!r.password,
             isFull: r.players ? r.players.length >= 8 : false,
             userCount: r.players ? r.players.length : 0
         }));
@@ -176,21 +183,28 @@ async function joinRoom(payload, callback) {
             roomUsers.push(p);
         }
         
-        // Host 엔진 연결 갱신
+        // Host 엔진 연결 갱신 및 위임 처리
+        const wasHost = window.isHostLevel;
         const me = roomUsers.find(u => u.socketId === mockSocket.id);
-        if (me && me.isHost && !window.hostGameEngine) {
-            window.hostGameEngine = new LiarEngine({ id: roomId, users: new Map(roomUsers.map(u => [u.socketId, u])) }, {
-                to: (sid) => ({
+        if (me && me.isHost) {
+            if (!wasHost) {
+                window.isHostLevel = true;
+                mockSocket._trigger('game:host_handoff', { isHost: true });
+            }
+            if (!window.hostGameEngine) {
+                window.hostGameEngine = new LiarEngine({ id: roomId, users: new Map(roomUsers.map(u => [u.socketId, u])) }, {
+                    to: (sid) => ({
+                        emit: (ev, pl) => {
+                            if (sid === mockSocket.id) mockSocket._trigger(ev, pl);
+                            else realtimeChannel.send({ type: 'broadcast', event: 'direct:'+ev, payload: { targetSid: sid, ...pl } });
+                        }
+                    }),
                     emit: (ev, pl) => {
-                        if (sid === mockSocket.id) mockSocket._trigger(ev, pl);
-                        else realtimeChannel.send({ type: 'broadcast', event: 'direct:'+ev, payload: { targetSid: sid, ...pl } });
+                        mockSocket._trigger(ev, pl);
+                        realtimeChannel.send({ type: 'broadcast', event: 'broadcast:'+ev, payload: pl });
                     }
-                }),
-                emit: (ev, pl) => {
-                    mockSocket._trigger(ev, pl); // 내 화면 갱신
-                    realtimeChannel.send({ type: 'broadcast', event: 'broadcast:'+ev, payload: pl }); // 남들 화면 갱신
-                }
-            });
+                });
+            }
         }
         
         // 엔진 유저 정보 갱신
@@ -215,6 +229,7 @@ async function joinRoom(payload, callback) {
     .on('broadcast', { event: 'guest:game:vote' }, (msg) => { if(window.isHostLevel) window.hostGameEngine.receiveVote(msg.payload.senderId, msg.payload.targetSocketId); })
     .on('broadcast', { event: 'guest:game:agree' }, (msg) => { if(window.isHostLevel) window.hostGameEngine.receiveAgree(msg.payload.senderId, msg.payload.agreed); })
     .on('broadcast', { event: 'guest:game:keyword' }, (msg) => { if(window.isHostLevel) window.hostGameEngine.receiveKeyword(msg.payload.senderId, msg.payload.keyword); })
+    .on('broadcast', { event: 'game:start_loading' }, (msg) => mockSocket._trigger('game:start_loading', msg.payload))
     .subscribe(async (status, err) => {
         if (status === 'SUBSCRIBED') {
             try {
@@ -239,8 +254,24 @@ async function joinRoom(payload, callback) {
 }
 
 async function leaveRoom() {
+    if (realtimeChannel) {
+        try {
+            const state = realtimeChannel.presenceState();
+            let count = 0;
+            for (const k in state) count++;
+            
+            // 본인이 마지막 참여자면 방 삭제
+            if (count <= 1) {
+                const toDel = realtimeChannel.topic.replace('realtime:room-', '').replace('room-', '');
+                await supabaseClient.from('rooms').delete().eq('id', toDel);
+            }
+            await supabaseClient.removeChannel(realtimeChannel); 
+        } catch (e) {
+            console.error('방 삭제 실패', e);
+        }
+        realtimeChannel = null; 
+    }
     if (currentMyDbId) await supabaseClient.from('players').delete().eq('id', currentMyDbId);
-    if (realtimeChannel) { await supabaseClient.removeChannel(realtimeChannel); realtimeChannel = null; }
     window.hostGameEngine = null;
 }
 
