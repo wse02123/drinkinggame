@@ -1430,7 +1430,11 @@
             const crownHtml = isCrown
                 ? `<div class="host-crown"><svg width="18" height="18" viewBox="0 0 24 24" fill="var(--point-red)" stroke="var(--ink)" stroke-width="3" stroke-linejoin="round"><path d="M2 22h20M2 20l4-12 4 6 2-10 2 10 4-6 4 12"/></svg></div>`
                 : '';
-            const label = u.nickname + (isMe ? (u.isHost ? ' (계산자)' : ' (나)') : '');
+            
+            let label = u.nickname;
+            if (u.isHost) label += ' (방장)';
+            if (isMe) label += ' (나)';
+            
             grid.innerHTML += `
                 <div class="wf-avatar-card ${isMe ? 'is-me' : ''}" id="${isMe ? 'avatar-me' : 'avatar-'+u.socketId}">
                     ${crownHtml}
