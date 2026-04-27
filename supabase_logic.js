@@ -126,10 +126,12 @@ async function joinRoom(payload, callback) {
         }).select();
         
         if (error || !data || data.length === 0) {
-            console.error('[방 생성 실패]', error);
+            console.error('[방 생성 실패 디테일]', error);
+            alert('방 생성 실패! 사유: ' + (error?.message || '알 수 없는 DB 오류. (키값 혹은 RLS 확인 필요)'));
             return callback({success: false, message: '방 개설 실패: ' + (error?.message || 'DB 에러')});
         }
         roomId = data[0].id;
+        console.log('[방 생성 성공] ID:', roomId);
     }
     
     // 플레이어 insert
@@ -140,12 +142,17 @@ async function joinRoom(payload, callback) {
         avatar_url: payload.user.photoUrl
     }).select();
     
-    if (pError) return callback({success: false, message: '방 입장 실패'});
+    if (pError) {
+        console.error('[플레이어 입장 실패]', pError);
+        alert('플레이어 입장 실패! 사유: ' + pError.message);
+        return callback({success: false, message: '방 입장 실패'});
+    }
     currentMyDbId = pData[0].id;
 
-    // 만약 방장이라면 rooms의 host_id 업데이트
+    // 만약 방장이라면 rooms의 host_id 업데이트 (UUID 형식 준수)
     if (!payload.roomId) {
-        await supabaseClient.from('rooms').update({ host_id: currentMyDbId }).eq('id', roomId);
+        const { error: uError } = await supabaseClient.from('rooms').update({ host_id: currentMyDbId }).eq('id', roomId);
+        if (uError) console.error('[방장 위임 실패]', uError);
     }
 
     // 채널 구독
