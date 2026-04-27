@@ -156,9 +156,53 @@
 
         .room-card-item { background: #fff; border: var(--border-style); border-radius: var(--soft-radius); padding: 16px; margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; box-shadow: var(--hard-shadow); }
         .host-only { display: none; }
+        /* Loading Modal Prototype */
+        #loadingModal {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(56, 51, 50, 0.85); display: none; flex-direction: column; justify-content: center; align-items: center;
+            z-index: 9999; backdrop-filter: blur(5px);
+        }
+        #loadingModal.active { display: flex; }
+        .beer-mug-loading {
+            position: relative; width: 80px; height: 100px; border: 6px solid #FFF; border-top: none; border-radius: 0 0 16px 16px;
+            background: rgba(255,255,255,0.1); box-shadow: 0 10px 20px rgba(0,0,0,0.3); margin-bottom: 30px;
+        }
+        .beer-mug-loading::after {
+            content: ''; position: absolute; top: 20px; right: -30px; width: 20px; height: 40px;
+            border: 6px solid #FFF; border-left: none; border-radius: 0 16px 16px 0;
+        }
+        .beer-liquid-loading {
+            position: absolute; bottom: 0; left: 0; width: 100%; background: var(--point-beer);
+            border-radius: 0 0 10px 10px; animation: fillBeer 1.5s ease-in-out infinite alternate; overflow: hidden;
+        }
+        .beer-foam-loading {
+            position: absolute; top: -10px; left: -10px; right: -10px; height: 30px; background: #FFF;
+            border-radius: 15px; animation: foamRise 1.5s ease-in-out infinite alternate; box-shadow: 0 4px 0 rgba(0,0,0,0.1);
+        }
+        .bubble-loading { position: absolute; background: rgba(255,255,255,0.4); border-radius: 50%; animation: floatUp 1s ease-in infinite; }
+        .bubble-loading:nth-child(1) { width: 8px; height: 8px; left: 15%; bottom: -10px; animation-duration: 0.8s; }
+        .bubble-loading:nth-child(2) { width: 12px; height: 12px; left: 40%; bottom: -10px; animation-duration: 1.2s; animation-delay: 0.2s;}
+        .bubble-loading:nth-child(3) { width: 6px; height: 6px; left: 70%; bottom: -10px; animation-duration: 0.9s; animation-delay: 0.5s; }
+        .loading-text { color: #FFF; font-size: 1.6em; letter-spacing: 1px; text-shadow: 2px 2px 0px var(--ink); animation: pulseText 1.5s infinite; }
+        .loading-subtext { color: #ccc; font-size: 1em; margin-top: 10px; font-weight: bold; }
+        @keyframes fillBeer { 0% { height: 10%; } 100% { height: 95%; } }
+        @keyframes foamRise { 0% { transform: translateY(80px) scale(0.8); opacity: 0; } 50% { opacity: 1; } 100% { transform: translateY(0) scale(1.1); opacity: 1; } }
+        @keyframes floatUp { 0% { transform: translateY(0); opacity: 1; } 100% { transform: translateY(-80px); opacity: 0; } }
+        @keyframes pulseText { 0%, 100% { opacity: 1; transform: translateY(0); } 50% { opacity: 0.6; transform: translateY(-3px); } }
     </style>
 </head>
 <body>
+
+<div id="loadingModal">
+    <div class="beer-mug-loading">
+        <div class="beer-liquid-loading">
+            <div class="bubble-loading"></div><div class="bubble-loading"></div><div class="bubble-loading"></div>
+        </div>
+        <div class="beer-foam-loading"></div>
+    </div>
+    <div class="loading-text" id="loadingTitle">세팅 중...🍻</div>
+    <div class="loading-subtext" id="loadingDesc">서버와 통신하는 중입니다</div>
+</div>
 
 <div class="app-container" id="capture-area">
     
@@ -674,11 +718,13 @@
         if (asHost) {
             const roomName = document.getElementById('createRoomNameInput').value.trim() || '새로운 테이블';
             const roomPw   = document.querySelector('#modal-create-room input[type=password]')?.value || '';
+            showLoading('room');
             socket.emit('room:create', {
                 name: roomName,
                 password: roomPw,
                 user: { nickname: myInfo.nickname, emoji: myInfo.emoji, photoUrl: myInfo.imageUrl || null }
             }, (res) => {
+                hideLoading();
                 if (!res.success) return showCustomAlert(res.message);
                 closeModalDirect('modal-create-room');
                 currentRoomId = res.room.id;
@@ -691,11 +737,13 @@
             });
         } else {
             // 비밀방 입장
+            showLoading('room');
             socket.emit('room:join', {
                 roomId: currentClickRoomId,
                 password: pw,
                 user: { nickname: myInfo.nickname, emoji: myInfo.emoji, photoUrl: myInfo.imageUrl || null }
             }, (res) => {
+                hideLoading();
                 if (!res.success) return showCustomAlert(res.message);
                 closeModalDirect('modal-enter-password');
                 currentRoomId = res.room.id;
@@ -712,11 +760,13 @@
     function joinOpenRoom(roomId, rName) {
         if (!socket || !socket.connected) return joinRoomMock(false, rName);
         currentClickRoomId = roomId;
+        showLoading('room');
         socket.emit('room:join', {
             roomId,
             password: '',
             user: { nickname: myInfo.nickname, emoji: myInfo.emoji, photoUrl: myInfo.imageUrl || null }
         }, (res) => {
+            hideLoading();
             if (!res.success) return showCustomAlert(res.message);
             currentRoomId = res.room.id;
             setupRoom(false, res.room.name);
@@ -799,7 +849,9 @@
             else showCustomAlert('구현 예정인 기능입니다! (준비중)');
             return;
         }
+        showLoading('game');
         socket.emit('game:start', { gameName: roomSelectedGameName }, (res) => {
+            hideLoading();
             if (!res.success) showCustomAlert(res.message || '게임 시작 실패');
         });
     }
@@ -850,6 +902,32 @@
         if(msg) t.innerText = msg;
         t.className = "show";
         setTimeout(() => { t.className = t.className.replace("show", ""); }, 3000);
+    }
+
+    let loadingInterval = null;
+    function showLoading(context) {
+        document.getElementById('loadingModal').classList.add('active');
+        let index = 0;
+        const messages = context === 'room' ? [
+            {title:"술자리 세팅 중...🍻", desc:"안주 주문하고 있습니다"},
+            {title:"소주병 따는 중...🍾", desc:"서버와 짠 하는 중입니다"}
+        ] : [
+            {title:"게임 세팅 중...🔥", desc:"룰 설명서 읽는 중입니다"},
+            {title:"심리전 준비 중...😎", desc:"라이어를 고르고 있습니다"}
+        ];
+        
+        const updateText = () => {
+            document.getElementById('loadingTitle').innerText = messages[index].title;
+            document.getElementById('loadingDesc').innerText = messages[index].desc;
+            index = (index + 1) % messages.length;
+        };
+        updateText();
+        loadingInterval = setInterval(updateText, 2500);
+    }
+    
+    function hideLoading() {
+        document.getElementById('loadingModal').classList.remove('active');
+        clearInterval(loadingInterval);
     }
 
     // --- Liar JS Engine (Gate 3 폴백용 — 소켓 연결 시 서버가 제어) ---

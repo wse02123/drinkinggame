@@ -42,7 +42,12 @@ const mockSocket = {
                 }
             }
             // Host Action overrides
-            else if (window.isHostLevel && window.hostGameEngine) {
+            else if (window.isHostLevel) {
+                if (!window.hostGameEngine) {
+                    console.error('[엔진 초기화 오류] hostGameEngine이 존재하지 않습니다.');
+                    if (callback) callback({success: false, message: '서버 렌더링 중입니다. 1~2초 후 다시 시도해주세요.'});
+                    return;
+                }
                 if (event === 'game:start') {
                     window.hostGameEngine.start();
                     if (callback) callback({success: true});
