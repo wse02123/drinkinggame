@@ -97,7 +97,7 @@ let roomUsers = [];
 // ---- 방 목록 패치 로직 ----
 async function fetchRoomList() {
     // players(count) 집계 연산이 복잡할 수 있으므로 간단한 쿼리로 우선 수정
-    const { data: rooms, error } = await supabase.from('rooms').select('*, players(id)').eq('game_status', 'LOBBY');
+    const { data: rooms, error } = await supabaseClient.from('rooms').select('*, players(id)').eq('game_status', 'LOBBY');
     
     if (!error && rooms) {
         const mapped = rooms.map(r => ({
@@ -119,7 +119,7 @@ async function joinRoom(payload, callback) {
     if (!roomId) {
         // 새 방 개설 (room:create 대응)
         console.log('[방 생성 시작]', payload);
-        const { data, error } = await supabase.from('rooms').insert({
+        const { data, error } = await supabaseClient.from('rooms').insert({
             name: payload.name || '새 테이블', 
             host_id: '00000000-0000-0000-0000-000000000000', 
             game_status: 'LOBBY'
@@ -133,7 +133,7 @@ async function joinRoom(payload, callback) {
     }
     
     // 플레이어 insert
-    const { data: pData, error: pError } = await supabase.from('players').insert({
+    const { data: pData, error: pError } = await supabaseClient.from('players').insert({
         room_id: roomId,
         nickname: payload.user.nickname,
         emoji: payload.user.emoji,
@@ -145,11 +145,11 @@ async function joinRoom(payload, callback) {
 
     // 만약 방장이라면 rooms의 host_id 업데이트
     if (!payload.roomId) {
-        await supabase.from('rooms').update({ host_id: currentMyDbId }).eq('id', roomId);
+        await supabaseClient.from('rooms').update({ host_id: currentMyDbId }).eq('id', roomId);
     }
 
     // 채널 구독
-    realtimeChannel = supabase.channel('room-' + roomId, {
+    realtimeChannel = supabaseClient.channel('room-' + roomId, {
         config: {
             presence: { key: mockSocket.id }
         }
@@ -222,8 +222,8 @@ async function joinRoom(payload, callback) {
 }
 
 async function leaveRoom() {
-    if (currentMyDbId) await supabase.from('players').delete().eq('id', currentMyDbId);
-    if (realtimeChannel) { await supabase.removeChannel(realtimeChannel); realtimeChannel = null; }
+    if (currentMyDbId) await supabaseClient.from('players').delete().eq('id', currentMyDbId);
+    if (realtimeChannel) { await supabaseClient.removeChannel(realtimeChannel); realtimeChannel = null; }
     window.hostGameEngine = null;
 }
 
