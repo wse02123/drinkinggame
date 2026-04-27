@@ -24,57 +24,59 @@ const mockSocket = {
         _callbacks[event].push(cb);
     },
     emit: async function(event, payload, callback) {
-        if (event === 'room:list') {
-            await fetchRoomList();
-            if (callback) callback();
-        } 
-        else if (event === 'room:create') {
-            await joinRoom(payload, callback);
-        }
-        else if (event === 'room:join') {
-            await joinRoom(payload, callback);
-        }
-        else if (event === 'room:leave') {
-            await leaveRoom();
-            if (callback) callback();
-        }
-        else if (event === 'game:request') {
-            if (realtimeChannel) {
-                realtimeChannel.send({ type: 'broadcast', event: 'game:request:broadcast', payload: {
-                    requesterSocketId: mockSocket.id,
-                    requesterNickname: payload.user?.nickname || '유저',
-                    gameName: payload.gameName
-                }});
+        try {
+            if (event === 'room:list') {
+                await fetchRoomList();
+                if (callback) callback();
+            } 
+            else if (event === 'room:create' || event === 'room:join') {
+                await joinRoom(payload, callback);
             }
-        }
-        // Host Action overrides
-        else if (window.isHostLevel && window.hostGameEngine) {
-            if (event === 'game:start') {
-                window.hostGameEngine.start();
-                if (callback) callback({success: true});
-            } else if (event === 'game:phase_skip') {
-                // 방장 스킵
-                window.hostGameEngine._clearTimer();
-                const skipTo = payload.skipTo || 'VOTING';
-                if (skipTo === 'VOTING') window.hostGameEngine._startVoting();
-                else if (skipTo === 'DEFENSE') {
-                    if (window.hostGameEngine.accusedSocketId) window.hostGameEngine._startDefense();
-                } else if (skipTo === 'AGREE') {
-                    if (window.hostGameEngine.accusedSocketId) window.hostGameEngine._startAgree();
+            else if (event === 'room:leave') {
+                await leaveRoom();
+                if (callback) callback();
+            }
+            else if (event === 'game:request') {
+                if (realtimeChannel) {
+                    realtimeChannel.send({ type: 'broadcast', event: 'game:request:broadcast', payload: {
+                        requesterSocketId: mockSocket.id,
+                        requesterNickname: payload.user?.nickname || '유저',
+                        gameName: payload.gameName
+                    }});
                 }
-            } else if (event === 'game:vote') {
-                window.hostGameEngine.receiveVote(mockSocket.id, payload.targetSocketId);
-            } else if (event === 'game:agree') {
-                window.hostGameEngine.receiveAgree(mockSocket.id, payload.agreed);
-            } else if (event === 'game:keyword') {
-                window.hostGameEngine.receiveKeyword(mockSocket.id, payload.keyword);
             }
-        } 
-        // Guest Actions forwarded to channel
-        else if (!window.isHostLevel && realtimeChannel) {
-            if (['game:vote', 'game:agree', 'game:keyword'].includes(event)) {
-                realtimeChannel.send({ type: 'broadcast', event: 'guest:'+event, payload: { senderId: mockSocket.id, ...payload } });
+            // Host Action overrides
+            else if (window.isHostLevel && window.hostGameEngine) {
+                if (event === 'game:start') {
+                    window.hostGameEngine.start();
+                    if (callback) callback({success: true});
+                } else if (event === 'game:phase_skip') {
+                    // 방장 스킵
+                    window.hostGameEngine._clearTimer();
+                    const skipTo = payload.skipTo || 'VOTING';
+                    if (skipTo === 'VOTING') window.hostGameEngine._startVoting();
+                    else if (skipTo === 'DEFENSE') {
+                        if (window.hostGameEngine.accusedSocketId) window.hostGameEngine._startDefense();
+                    } else if (skipTo === 'AGREE') {
+                        if (window.hostGameEngine.accusedSocketId) window.hostGameEngine._startAgree();
+                    }
+                } else if (event === 'game:vote') {
+                    window.hostGameEngine.receiveVote(mockSocket.id, payload.targetSocketId);
+                } else if (event === 'game:agree') {
+                    window.hostGameEngine.receiveAgree(mockSocket.id, payload.agreed);
+                } else if (event === 'game:keyword') {
+                    window.hostGameEngine.receiveKeyword(mockSocket.id, payload.keyword);
+                }
+            } 
+            // Guest Actions forwarded to channel
+            else if (!window.isHostLevel && realtimeChannel) {
+                if (['game:vote', 'game:agree', 'game:keyword'].includes(event)) {
+                    realtimeChannel.send({ type: 'broadcast', event: 'guest:'+event, payload: { senderId: mockSocket.id, ...payload } });
+                }
             }
+        } catch (err) {
+            console.error('[Socket Mock Emit Error]', event, err);
+            if (callback) callback({success: false, message: '알 수 없는 시스템 오류가 발생했습니다. (' + err.message + ')'});
         }
     },
     
@@ -211,17 +213,25 @@ async function joinRoom(payload, callback) {
     .on('broadcast', { event: 'guest:game:vote' }, (msg) => { if(window.isHostLevel) window.hostGameEngine.receiveVote(msg.payload.senderId, msg.payload.targetSocketId); })
     .on('broadcast', { event: 'guest:game:agree' }, (msg) => { if(window.isHostLevel) window.hostGameEngine.receiveAgree(msg.payload.senderId, msg.payload.agreed); })
     .on('broadcast', { event: 'guest:game:keyword' }, (msg) => { if(window.isHostLevel) window.hostGameEngine.receiveKeyword(msg.payload.senderId, msg.payload.keyword); })
-    .subscribe(async (status) => {
+    .subscribe(async (status, err) => {
         if (status === 'SUBSCRIBED') {
-            await realtimeChannel.track({
-                socketId: mockSocket.id,
-                nickname: payload.user.nickname,
-                emoji: payload.user.emoji,
-                photoUrl: payload.user.photoUrl,
-                score: 0,
-                isHost: false
-            });
-            callback({success: true, room: { id: roomId, name: payload.name || payload.password || '새방' }, users: [], hostSocketId: null});
+            try {
+                await realtimeChannel.track({
+                    socketId: mockSocket.id,
+                    nickname: payload.user?.nickname || '이름없음',
+                    emoji: payload.user?.emoji || '😎',
+                    photoUrl: payload.user?.photoUrl || null,
+                    score: 0,
+                    isHost: false
+                });
+                callback({success: true, room: { id: roomId, name: payload.name || payload.password || '새방' }, users: [], hostSocketId: null});
+            } catch (trackErr) {
+                console.error('[채널 트래킹 실패]', trackErr);
+                callback({success: false, message: '채널 트래킹에 실패했습니다.'});
+            }
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+            console.error('[채널 구독 실패]', status, err);
+            callback({success: false, message: '실시간 통신 연결 실패: ' + status});
         }
     });
 }
