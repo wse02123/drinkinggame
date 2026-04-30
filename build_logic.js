@@ -110,8 +110,17 @@ let roomUsers = [];
 async function fetchRoomList() {
     const { data: rooms, error } = await supabaseClient.from('rooms').select('*, players(id)').order('created_at', { ascending: false });
     if (!error && rooms) {
-        // userCount가 0인 방은 로비에 안 보이게 필터링 (가비지 컬렉션 역할)
-        const activeRooms = rooms.filter(r => (r.players && r.players.length > 0) || (Date.now() - new Date(r.created_at).getTime() < 60000));
+        // 가비지 컬렉션: 2시간 이상 지난 방은 목록에서 제외하고 DB에서 삭제
+        const twoHoursMs = 2 * 60 * 60 * 1000;
+        const now = Date.now();
+        
+        rooms.forEach(r => {
+            if (now - new Date(r.created_at).getTime() > twoHoursMs) {
+                supabaseClient.from('rooms').delete().eq('id', r.id).then();
+            }
+        });
+
+        const activeRooms = rooms.filter(r => (now - new Date(r.created_at).getTime() <= twoHoursMs));
         
         const mapped = activeRooms.map(r => ({
             id: r.id,
@@ -199,8 +208,13 @@ async function joinRoom(payload, callback) {
                 window.hostGameEngine = new LiarEngine({ id: roomId, users: new Map(roomUsers.map(u => [u.socketId, u])) }, {
                     to: (sid) => ({
                         emit: (ev, pl) => {
-                            if (sid === mockSocket.id) mockSocket._trigger(ev, pl);
-                            else realtimeChannel.send({ type: 'broadcast', event: 'direct:'+ev, payload: { targetSid: sid, ...pl } });
+                            if (sid === roomId) {
+                                mockSocket._trigger(ev, pl);
+                                realtimeChannel.send({ type: 'broadcast', event: 'broadcast:'+ev, payload: pl });
+                            } else {
+                                if (sid === mockSocket.id) mockSocket._trigger(ev, pl);
+                                else realtimeChannel.send({ type: 'broadcast', event: 'direct:'+ev, payload: { targetSid: sid, ...pl } });
+                            }
                         }
                     }),
                     emit: (ev, pl) => {
