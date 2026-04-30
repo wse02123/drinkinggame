@@ -373,15 +373,37 @@ class LiarEngine {
     // ----------------------------------------------------------
     // 게임 시작
     // ----------------------------------------------------------
-    start() {
-        // 제시어 무작위 선택
-        this.wordPair = WORD_PAIRS[Math.floor(Math.random() * WORD_PAIRS.length)];
+    async start() {
+        // 제시어 무작위 선택 (Supabase 연동)
+        try {
+            const { data: allKeywords, error } = await supabaseClient.from('liar_game_keywords').select('*');
+            if (error || !allKeywords || allKeywords.length === 0) {
+                throw new Error("DB Error or Empty");
+            }
+            
+            // 1. 카테고리 랜덤 추출
+            const uniqueCategories = [...new Set(allKeywords.map(k => k.category))];
+            const randomCategory = uniqueCategories[Math.floor(Math.random() * uniqueCategories.length)];
+            
+            // 2. 해당 카테고리의 키워드 중 랜덤 2개 추출 (시민/라이어용)
+            const catKeywords = allKeywords.filter(k => k.category === randomCategory);
+            const shuffled = catKeywords.sort(() => 0.5 - Math.random());
+            
+            this.wordPair = {
+                category: randomCategory,
+                citizen: shuffled[0].keyword,
+                liar: shuffled.length > 1 ? shuffled[1].keyword : shuffled[0].keyword
+            };
+        } catch (err) {
+            console.error("Supabase 키워드 로딩 실패, 로컬 데이터 폴백:", err);
+            this.wordPair = WORD_PAIRS[Math.floor(Math.random() * WORD_PAIRS.length)];
+        }
 
-        // 라이어 무작위 선정
+        // 라이어 무작위 지정
         const userIds = Array.from(this.room.users.keys());
         this.liarSocketId = userIds[Math.floor(Math.random() * userIds.length)];
 
-        console.log(`[게임 시작] ${this.roomId} | 제시어: ${this.wordPair.citizen} | 라이어: ${this.liarSocketId}`);
+        console.log(`[게임 시작] ${this.roomId} | 시민: ${this.wordPair.citizen} | 라이어: ${this.wordPair.liar} (가짜)`);
 
         // PRD: 개별 단어 전송 (역할 블라인드)
         for (const [sid, _user] of this.room.users) {
