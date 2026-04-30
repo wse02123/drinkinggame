@@ -1,4 +1,4 @@
-/**
+﻿/**
  * LiarEngine — 라이어 게임 서버 사이드 상태머신
  * PRD 3.1 전체 룰 구현
  *
@@ -334,12 +334,14 @@ class LiarEngine {
         });
 
         // 나머지는 대기 화면
+        const accusedUserKw = this.room.users.get(this.accusedSocketId);
         for (const [sid] of this.room.users) {
             if (sid !== this.accusedSocketId) {
                 this.io.to(sid).emit('game:phase', {
                     phase: PHASE.KEYWORD,
                     totalSec: KEYWORD_SEC,
-                    isAccused: false
+                    isAccused: false,
+                    accusedNickname: accusedUserKw?.nickname || '???'
                 });
             }
         }
